@@ -46,7 +46,27 @@ export const LiveClassroom = () => {
 
   // Construct WebSocket signaling URL
   const tokenParam = localStorage.getItem('token') ? `?token=${localStorage.getItem('token')}` : '';
-  const wsUrl = `ws://localhost:8080/ws/signaling${tokenParam}`;
+  
+  // Dynamically resolve signaling server URL based on the environment to support mobile and HTTPS
+  const getWebSocketUrl = () => {
+    const apiBaseUrl = import.meta.env.VITE_API_URL;
+    if (apiBaseUrl) {
+      const isSecure = apiBaseUrl.startsWith('https:');
+      const wsProtocol = isSecure ? 'wss:' : 'ws:';
+      const cleanHost = apiBaseUrl.replace(/^(https?:\/\/)/, '').replace(/\/api\/?$/, '');
+      return `${wsProtocol}//${cleanHost}/ws/signaling${tokenParam}`;
+    } else {
+      const isSecure = window.location.protocol === 'https:';
+      const wsProtocol = isSecure ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      if (host.includes('localhost') || host.includes('127.0.0.1')) {
+        return `ws://localhost:8080/ws/signaling${tokenParam}`;
+      }
+      return `${wsProtocol}//${host}/ws/signaling${tokenParam}`;
+    }
+  };
+
+  const wsUrl = getWebSocketUrl();
 
   // ── 1. WebSocket signaling event dispatcher ──
   const onWebSocketMessage = useCallback((message) => {
