@@ -151,3 +151,15 @@ input:focus, select:focus, textarea:focus, button:focus-visible {
   outline: 2px solid rgba(13, 148, 136, 0.5);
   outline-offset: 2px;
 }
+
+/* Style datetime inputs for dark mode compatibility */
+input[type="datetime-local"] {
+  color-scheme: dark;
+  color: #f1f5f9 !important;
+}
+
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: brightness(0) invert(1) !important;
+  opacity: 1 !important;
+  cursor: pointer;
+}

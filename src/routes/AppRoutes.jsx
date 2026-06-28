@@ -9,6 +9,8 @@ import CreateCourse from '../pages/course/CreateCourse';
 import CourseDetail from '../pages/course/CourseDetail';
 import CourseLearn from '../pages/course/CourseLearn';
 import NotFound from '../pages/NotFound';
+import LiveJoinGate from '../pages/live/LiveJoinGate';
+import LiveClassroom from '../pages/live/LiveClassroom';
 
 
 const Unauthorized = () => (
@@ -62,6 +64,10 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } 
       />
+
+      {/* Live Classroom & Pre-Join Gate Routes */}
+      <Route path="/live/join/:roomToken" element={<LiveJoinGate />} />
+      <Route path="/live/classroom/:sessionId" element={<LiveClassroom />} />
       
       {/* 404 Catch-All Route */}
       <Route path="*" element={<NotFound />} />

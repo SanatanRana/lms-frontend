@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/axiosConfig';
 import { AuthContext } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 const StudentDashboard = () => {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [enrollments, setEnrollments] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
@@ -38,10 +39,10 @@ const StudentDashboard = () => {
     }
   };
 
-  const handleJoinLive = async (sessionId, meetingLink) => {
+  const handleJoinLive = async (sessionId, roomToken) => {
     try {
       await api.post(`/live/${sessionId}/join`);
-      window.open(meetingLink, '_blank');
+      navigate(`/live/join/${roomToken}`);
     } catch (error) {
       console.error("Failed to join live session:", error);
     }
@@ -141,7 +142,7 @@ const StudentDashboard = () => {
                   </span>
                   
                   <button
-                    onClick={() => handleJoinLive(session.id, session.meetingLink)}
+                    onClick={() => handleJoinLive(session.id, session.roomToken)}
                     className={`text-xs font-bold px-5 py-2 rounded-xl transition cursor-pointer shadow ${
                       session.status === 'LIVE' 
                         ? 'bg-error hover:bg-error/95 text-white animate-pulse shadow-error/15' 

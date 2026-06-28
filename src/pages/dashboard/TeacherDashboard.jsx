@@ -1,12 +1,27 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../api/axiosConfig';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import Toast from '../../components/Toast';
 
 const TeacherDashboard = () => {
+  const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Course edit state
+  const [currentTab, setCurrentTab] = useState('active'); // 'active' vs 'archived'
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [editCourseForm, setEditCourseForm] = useState({
+    title: '',
+    category: 'Engineering',
+    description: '',
+    price: '',
+    discountPrice: '',
+    thumbnailUrl: '',
+    introVideoUrl: ''
+  });
 
   // Syllabus management state
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -33,9 +48,11 @@ const TeacherDashboard = () => {
   const [liveForm, setLiveForm] = useState({
     courseId: '',
     title: '',
-    meetingLink: '',
     startTime: '',
-    endTime: ''
+    endTime: '',
+    maxParticipants: 50,
+    chatEnabled: true,
+    guestAccessEnabled: true
   });
   const [editingSession, setEditingSession] = useState(null);
 
@@ -53,9 +70,13 @@ const TeacherDashboard = () => {
     try {
       // 1. Fetch teacher courses
       const courseResp = await api.get('/courses/my-courses');
-      setCourses(courseResp.data.data);
-      if (courseResp.data.data.length > 0) {
-        setLiveForm(prev => ({ ...prev, courseId: courseResp.data.data[0].id.toString() }));
+      const allCourses = courseResp.data.data || [];
+      setCourses(allCourses);
+      const firstActive = allCourses.find(c => c.active);
+      if (firstActive) {
+        setLiveForm(prev => ({ ...prev, courseId: firstActive.id.toString() }));
+      } else {
+        setLiveForm(prev => ({ ...prev, courseId: '' }));
       }
 
       // 2. Fetch live sessions
@@ -65,6 +86,75 @@ const TeacherDashboard = () => {
       console.error("Error fetching teacher dashboard data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ── Course Edit & Archive Handlers ──
+
+  const handleStartEditCourse = (course) => {
+    setEditingCourse(course);
+    setEditCourseForm({
+      title: course.title,
+      category: course.category || 'Engineering',
+      description: course.description || '',
+      price: course.price !== undefined && course.price !== null ? course.price.toString() : '0',
+      discountPrice: course.discountPrice !== undefined && course.discountPrice !== null ? course.discountPrice.toString() : '',
+      thumbnailUrl: course.thumbnailUrl || '',
+      introVideoUrl: course.introVideoUrl || ''
+    });
+  };
+
+  const handleUpdateCourse = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...editCourseForm,
+        price: parseFloat(editCourseForm.price),
+        discountPrice: editCourseForm.discountPrice ? parseFloat(editCourseForm.discountPrice) : null
+      };
+
+      const response = await api.put(`/courses/${editingCourse.id}`, payload);
+      if (response.data.success) {
+        setCourses(courses.map(c => c.id === editingCourse.id ? response.data.data : c));
+        if (selectedCourse?.id === editingCourse.id) {
+          setSelectedCourse(response.data.data);
+        }
+        setEditingCourse(null);
+        showNotification('success', 'Course updated successfully!');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to update course.');
+    }
+  };
+
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm("Are you sure you want to delete/archive this course? If it has students enrolled, it will be Archived (preserving student access and billing records). If it is empty, it will be permanently deleted.")) return;
+    try {
+      const response = await api.delete(`/courses/${courseId}`);
+      if (response.data.success) {
+        showNotification('success', 'Course deleted/archived successfully!');
+        fetchDashboardData();
+        if (selectedCourse?.id === courseId) {
+          setSelectedCourse(null);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to delete/archive course.');
+    }
+  };
+
+  const handleRestoreCourse = async (courseId) => {
+    try {
+      const response = await api.post(`/courses/${courseId}/restore`);
+      if (response.data.success) {
+        showNotification('success', 'Course published/restored successfully!');
+        fetchDashboardData();
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to restore course.');
     }
   };
 
@@ -304,9 +394,11 @@ const TeacherDashboard = () => {
       const payload = {
         courseId: parseInt(liveForm.courseId),
         title: liveForm.title,
-        meetingLink: liveForm.meetingLink,
         startTime: formatDateTime(liveForm.startTime),
-        endTime: formatDateTime(liveForm.endTime)
+        endTime: formatDateTime(liveForm.endTime),
+        maxParticipants: parseInt(liveForm.maxParticipants),
+        chatEnabled: liveForm.chatEnabled,
+        guestAccessEnabled: liveForm.guestAccessEnabled
       };
 
       if (editingSession) {
@@ -317,9 +409,11 @@ const TeacherDashboard = () => {
           setLiveForm({
             courseId: courses[0]?.id?.toString() || '',
             title: '',
-            meetingLink: '',
             startTime: '',
-            endTime: ''
+            endTime: '',
+            maxParticipants: 50,
+            chatEnabled: true,
+            guestAccessEnabled: true
           });
           showNotification('success', 'Live Class rescheduled successfully!');
         }
@@ -330,9 +424,11 @@ const TeacherDashboard = () => {
           setLiveForm({
             courseId: courses[0]?.id?.toString() || '',
             title: '',
-            meetingLink: '',
             startTime: '',
-            endTime: ''
+            endTime: '',
+            maxParticipants: 50,
+            chatEnabled: true,
+            guestAccessEnabled: true
           });
           showNotification('success', 'Live Class scheduled successfully!');
         }
@@ -353,9 +449,11 @@ const TeacherDashboard = () => {
     setLiveForm({
       courseId: session.course?.id?.toString() || '',
       title: session.title || '',
-      meetingLink: session.meetingLink || '',
       startTime: truncateSeconds(session.startTime),
-      endTime: truncateSeconds(session.endTime)
+      endTime: truncateSeconds(session.endTime),
+      maxParticipants: session.maxParticipants || 50,
+      chatEnabled: session.chatEnabled !== false,
+      guestAccessEnabled: session.guestAccessEnabled !== false
     });
   };
 
@@ -364,9 +462,11 @@ const TeacherDashboard = () => {
     setLiveForm({
       courseId: courses[0]?.id?.toString() || '',
       title: '',
-      meetingLink: '',
       startTime: '',
-      endTime: ''
+      endTime: '',
+      maxParticipants: 50,
+      chatEnabled: true,
+      guestAccessEnabled: true
     });
   };
 
@@ -392,7 +492,10 @@ const TeacherDashboard = () => {
       const response = await api.patch(`/live/${sessionId}/start`);
       if (response.data.success) {
         setLiveSessions(liveSessions.map(s => s.id === sessionId ? response.data.data : s));
-        showNotification('success', 'Session started! Students are being notified.');
+        showNotification('success', 'Session started! Redirecting to classroom...');
+        setTimeout(() => {
+          navigate(`/live/classroom/${sessionId}`);
+        }, 1000);
       }
     } catch (error) {
       console.error(error);
@@ -408,6 +511,43 @@ const TeacherDashboard = () => {
       }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleUploadRecording = async (sessionId, file) => {
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingVideo(true);
+    try {
+      const response = await api.post(`/live/${sessionId}/recording`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      if (response.data.success) {
+        setLiveSessions(liveSessions.map(s => s.id === sessionId ? response.data.data : s));
+        showNotification('success', 'Recording uploaded successfully!');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to upload recording.');
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+
+  const handleDeleteRecording = async (sessionId) => {
+    if (!window.confirm("Are you sure you want to delete the recording?")) return;
+    try {
+      const response = await api.delete(`/live/${sessionId}/recording`);
+      if (response.data.success) {
+        setLiveSessions(liveSessions.map(s => s.id === sessionId ? response.data.data : s));
+        showNotification('success', 'Recording deleted.');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to delete recording.');
     }
   };
 
@@ -441,29 +581,91 @@ const TeacherDashboard = () => {
         {/* Left 2 Columns: Course List and Syllabus Creator */}
         <div className="lg:col-span-2 space-y-8">
           
-          {/* Courses */}
-          <section className="bg-surface-800 border border-surface-600 rounded-2xl p-6">
-            <h3 className="text-lg font-bold text-white mb-6 flex items-center space-x-2">
-              <span className="w-2 h-4 rounded bg-primary-500"></span>
-              <span>My Published Courses ({courses.length})</span>
-            </h3>
+             <section className="bg-surface-800 border border-surface-600 rounded-2xl p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-surface-600 pb-4 mb-6 gap-4">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <span className="w-2 h-4 rounded bg-primary-500"></span>
+                <span>My Courses</span>
+              </h3>
+              
+              <div className="flex space-x-2 bg-surface-900/50 p-1 rounded-xl border border-surface-600 self-start sm:self-auto">
+                <button
+                  onClick={() => setCurrentTab('active')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    currentTab === 'active'
+                      ? 'bg-primary-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Active ({courses.filter(c => c.active).length})
+                </button>
+                <button
+                  onClick={() => setCurrentTab('archived')}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    currentTab === 'archived'
+                      ? 'bg-amber-600/20 text-amber-400 border border-amber-500/20 shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Archived ({courses.filter(c => !c.active).length})
+                </button>
+              </div>
+            </div>
 
-            {courses.length === 0 ? (
-              <p className="text-slate-500 text-sm py-4">No courses published yet. Use "New Course" at the top to publish one!</p>
+            {courses.filter(c => currentTab === 'active' ? c.active : !c.active).length === 0 ? (
+              <p className="text-slate-500 text-sm py-4">
+                {currentTab === 'active' 
+                  ? 'No active courses published yet. Use "+ New Course" at the top to publish one!'
+                  : 'No archived courses.'}
+              </p>
             ) : (
               <div className="divide-y divide-[#1e293b] space-y-4">
-                {courses.map(course => (
-                  <div key={course.id} className="pt-4 first:pt-0 flex flex-col md:flex-row justify-between items-start md:items-center">
+                {courses.filter(c => currentTab === 'active' ? c.active : !c.active).map(course => (
+                  <div key={course.id} className="pt-4 first:pt-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
-                      <h4 className="text-white font-bold text-base">{course.title}</h4>
+                      <div className="flex items-center space-x-2 flex-wrap gap-1">
+                        <h4 className="text-white font-bold text-base">{course.title}</h4>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          course.active 
+                            ? 'bg-emerald-500/10 text-emerald-400' 
+                            : 'bg-amber-500/10 text-amber-400'
+                        }`}>
+                          {course.active ? 'Published' : 'Archived'}
+                        </span>
+                      </div>
                       <p className="text-slate-400 text-xs mt-1">{course.category} | Price: ₹{course.price}</p>
                     </div>
-                    <button
-                      onClick={() => selectCourseForSyllabus(course)}
-                      className="mt-3 md:mt-0 bg-primary-600/10 hover:bg-primary-600/20 text-primary-400 border border-primary-600/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition"
-                    >
-                      Manage Syllabus
-                    </button>
+                    <div className="flex flex-wrap gap-2 mt-3 md:mt-0 shrink-0">
+                      <button
+                        onClick={() => selectCourseForSyllabus(course)}
+                        className="bg-primary-600/10 hover:bg-primary-600/20 text-primary-400 border border-primary-600/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                      >
+                        Manage Syllabus
+                      </button>
+                      <button
+                        onClick={() => handleStartEditCourse(course)}
+                        className="bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                      >
+                        Edit Details
+                      </button>
+                      {course.active ? (
+                        <button
+                          onClick={() => handleDeleteCourse(course.id)}
+                          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          title="Archive/Delete Course"
+                        >
+                          Archive
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRestoreCourse(course.id)}
+                          className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          title="Restore/Publish Course"
+                        >
+                          Restore
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -931,7 +1133,7 @@ const TeacherDashboard = () => {
                     className="block w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none"
                     required
                   >
-                    {courses.map(c => (
+                    {courses.filter(c => c.active).map(c => (
                       <option key={c.id} value={c.id}>{c.title}</option>
                     ))}
                   </select>
@@ -949,16 +1151,39 @@ const TeacherDashboard = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Zoom/Meeting Link</label>
-                  <input
-                    type="url"
-                    placeholder="https://zoom.us/j/..."
-                    value={liveForm.meetingLink}
-                    onChange={(e) => setLiveForm({ ...liveForm, meetingLink: e.target.value })}
-                    className="block w-full bg-surface-900/50 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none"
-                    required
-                  />
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Max Capacity</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={100}
+                      value={liveForm.maxParticipants}
+                      onChange={(e) => setLiveForm({ ...liveForm, maxParticipants: parseInt(e.target.value) })}
+                      className="block w-full bg-surface-900/50 text-white border border-surface-600 rounded-xl px-2.5 py-2 text-xs focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-4">
+                    <input
+                      type="checkbox"
+                      id="chatEnabled"
+                      checked={liveForm.chatEnabled}
+                      onChange={(e) => setLiveForm({ ...liveForm, chatEnabled: e.target.checked })}
+                      className="rounded bg-surface-900 border-surface-600 text-primary-600 focus:ring-0"
+                    />
+                    <label htmlFor="chatEnabled" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider cursor-pointer">Enable Chat</label>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-4">
+                    <input
+                      type="checkbox"
+                      id="guestAccessEnabled"
+                      checked={liveForm.guestAccessEnabled}
+                      onChange={(e) => setLiveForm({ ...liveForm, guestAccessEnabled: e.target.checked })}
+                      className="rounded bg-surface-900 border-surface-600 text-primary-600 focus:ring-0"
+                    />
+                    <label htmlFor="guestAccessEnabled" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider cursor-pointer">Allow Guests</label>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1050,32 +1275,72 @@ const TeacherDashboard = () => {
                           >
                             Delete
                           </button>
+                          <button
+                            onClick={() => {
+                              const shareUrl = `${window.location.origin}/live/join/${session.roomToken}`;
+                              navigator.clipboard.writeText(shareUrl);
+                              showNotification('success', 'Join link copied to clipboard!');
+                            }}
+                            className="bg-slate-700 text-slate-300 border border-slate-500 text-[10px] font-semibold px-2.5 py-1 rounded-md transition hover:bg-slate-600 cursor-pointer"
+                          >
+                            Copy Link
+                          </button>
                         </>
                       )}
                       {session.status === 'LIVE' && (
-                        <button
-                          onClick={() => handleEndSession(session.id)}
-                          className="bg-error hover:bg-error text-white text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                        >
-                          End Session
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleEndSession(session.id)}
+                            className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+                          >
+                            End Session
+                          </button>
+                          <button
+                            onClick={() => navigate(`/live/classroom/${session.id}`)}
+                            className="bg-primary-600 hover:bg-primary-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+                          >
+                            Enter Classroom
+                          </button>
+                        </>
                       )}
                       {session.status === 'ENDED' && (
-                        <button
-                          onClick={() => handleDeleteSession(session.id)}
-                          className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                        >
-                          Delete
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleDeleteSession(session.id)}
+                            className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+                          >
+                            Delete Session
+                          </button>
+                          {session.recordingStatus === 'AVAILABLE' ? (
+                            <>
+                              <a
+                                href={session.recordingUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bg-primary-600/20 border border-primary-500/30 text-primary-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition inline-block"
+                              >
+                                View Recording
+                              </a>
+                              <button
+                                onClick={() => handleDeleteRecording(session.id)}
+                                className="bg-rose-600/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
+                              >
+                                Remove Recording
+                              </button>
+                            </>
+                          ) : (
+                            <label className="bg-slate-700 hover:bg-slate-600 text-slate-300 border border-surface-500 text-[10px] font-semibold px-2.5 py-1 rounded-md transition cursor-pointer flex items-center">
+                              Upload Recording
+                              <input
+                                type="file"
+                                accept="video/*"
+                                className="hidden"
+                                onChange={(e) => handleUploadRecording(session.id, e.target.files[0])}
+                              />
+                            </label>
+                          )}
+                        </>
                       )}
-                      <a 
-                        href={session.meetingLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-surface-700 text-slate-300 border border-surface-500 text-[10px] font-semibold px-2.5 py-1 rounded-md transition hover:bg-surface-600 cursor-pointer"
-                      >
-                        Join Room
-                      </a>
                     </div>
                   </div>
                 ))}
@@ -1084,6 +1349,106 @@ const TeacherDashboard = () => {
           </section>
         </div>
       </div>
+
+      {/* Edit Course Modal Overlay */}
+      {editingCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-surface-800 border border-surface-600 rounded-2xl p-6 shadow-2xl space-y-4">
+            {/* Close button */}
+            <button 
+              onClick={() => setEditingCourse(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer text-sm"
+            >
+              ✕
+            </button>
+
+            <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <span className="w-2 h-4 rounded bg-amber-500"></span>
+              <span>Edit Course Details</span>
+            </h3>
+            
+            <form onSubmit={handleUpdateCourse} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Course Title / Name</label>
+                <input
+                  type="text"
+                  value={editCourseForm.title}
+                  onChange={(e) => setEditCourseForm({ ...editCourseForm, title: e.target.value })}
+                  className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Category</label>
+                <select
+                  value={editCourseForm.category}
+                  onChange={(e) => setEditCourseForm({ ...editCourseForm, category: e.target.value })}
+                  className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
+                  required
+                >
+                  <option value="Engineering">Engineering</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Business">Business</option>
+                  <option value="Design">Design</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Description</label>
+                <textarea
+                  value={editCourseForm.description}
+                  onChange={(e) => setEditCourseForm({ ...editCourseForm, description: e.target.value })}
+                  rows="3"
+                  className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Price (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editCourseForm.price}
+                    onChange={(e) => setEditCourseForm({ ...editCourseForm, price: e.target.value })}
+                    className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Discount Price (₹, optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editCourseForm.discountPrice}
+                    onChange={(e) => setEditCourseForm({ ...editCourseForm, discountPrice: e.target.value })}
+                    className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex space-x-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCourse(null)}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-4 py-2 rounded-xl transition font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl transition font-semibold cursor-pointer"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
