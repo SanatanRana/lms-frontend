@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import { useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import StudentDashboard from './StudentDashboard';
 import TeacherDashboard from './TeacherDashboard';
@@ -16,15 +16,27 @@ const Dashboard = () => {
     );
   }
 
-  // Renders the specific dashboard layout based on the user's role
+  // Renders the specific dashboard based on the user's role
   switch (user.role) {
     case 'ADMIN':
-      return <AdminDashboard />;
+      return (
+        <div className="admin-portal-layout w-full page-transition">
+          <AdminDashboard />
+        </div>
+      );
     case 'TEACHER':
-      return <TeacherDashboard />;
+      return (
+        <div className="teacher-portal-layout w-full page-transition">
+          <TeacherDashboard />
+        </div>
+      );
     case 'STUDENT':
     default:
-      return <StudentDashboard />;
+      return (
+        <div className="student-portal-layout w-full page-transition">
+          <StudentDashboard />
+        </div>
+      );
   }
 };
 

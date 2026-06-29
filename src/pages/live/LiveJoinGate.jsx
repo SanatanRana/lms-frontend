@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../api/axiosConfig';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import api from '../../services/api';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export const LiveJoinGate = () => {
   const { roomToken } = useParams();
@@ -25,32 +25,18 @@ export const LiveJoinGate = () => {
   const userRole = localStorage.getItem('role') || 'GUEST';
   const userName = localStorage.getItem('userName') || '';
 
-  useEffect(() => {
-    fetchRoomInfo();
-    return () => {
-      stopPreview();
-    };
-  }, [roomToken]);
-
-  const fetchRoomInfo = async () => {
-    try {
-      const response = await api.get(`/live/room/${roomToken}`);
-      if (response.data.success) {
-        setSessionInfo(response.data.data);
-      } else {
-        setError(response.data.message || 'Failed to fetch room info');
-      }
-    } catch (err) {
-      console.error(err);
-      setError(err.response?.data?.message || 'Invalid or expired join link.');
-    } finally {
-      setLoading(false);
+  const stopPreview = () => {
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
     }
   };
 
   const startPreview = async () => {
     try {
-      stopPreview();
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
@@ -69,17 +55,37 @@ export const LiveJoinGate = () => {
     }
   };
 
-  const stopPreview = () => {
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      setLocalStream(null);
+  const fetchRoomInfo = async () => {
+    try {
+      const response = await api.get(`/live/room/${roomToken}`);
+      if (response.data.success) {
+        setSessionInfo(response.data.data);
+      } else {
+        setError(response.data.message || 'Failed to fetch room info');
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.message || 'Invalid or expired join link.');
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchRoomInfo();
+    return () => {
+      stopPreview();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomToken]);
+
+  useEffect(() => {
     if (sessionInfo && sessionInfo.status !== 'ENDED') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       startPreview();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionInfo]);
 
   const toggleCam = () => {
@@ -111,8 +117,9 @@ export const LiveJoinGate = () => {
       if (isAuthenticated) {
         // Logged in user: Join directly
         stopPreview();
-        navigate(`/live/classroom/${sessionInfo.sessionId}`, {
+        navigate(`/live/classroom/${roomToken}`, {
           state: {
+            sessionId: sessionInfo.sessionId,
             micEnabled,
             camEnabled,
             role: userRole,
@@ -138,8 +145,9 @@ export const LiveJoinGate = () => {
           stopPreview();
           // Store guest session temporary identifier or name
           sessionStorage.setItem('guestName', guestName.trim());
-          navigate(`/live/classroom/${sessionInfo.sessionId}`, {
+          navigate(`/live/classroom/${roomToken}`, {
             state: {
+              sessionId: sessionInfo.sessionId,
               micEnabled,
               camEnabled,
               role: 'GUEST',

@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api/axiosConfig';
+import api from '../services/api';
+import { AuthContext } from '../context/AuthContext';
 
 const Home = () => {
+  const { user } = useContext(AuthContext);
   const [courses, setCourses] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchCourses();
-  }, []);
 
   const fetchCourses = async () => {
     setLoading(true);
@@ -23,6 +21,11 @@ const Home = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchCourses();
+  }, []);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -69,6 +72,139 @@ const Home = () => {
     { name: 'Marketing', icon: '📈' },
     { name: 'Science', icon: '🔬' }
   ];
+
+  if (user) {
+    return (
+      <div className="min-h-screen pb-16">
+        {/* Compact Portal View Header */}
+        <div className="pt-6 pb-2 px-4 md:px-6 max-w-7xl mx-auto">
+          <h1 className="text-2xl md:text-3xl font-extrabold text-white">Explore Courses</h1>
+          <p className="text-slate-400 text-xs mt-1">Discover premium courses, lessons, and classrooms to expand your syllabus.</p>
+        </div>
+
+        {/* Search Bar */}
+        <div className="px-4 md:px-6 max-w-7xl mx-auto mt-4 mb-6">
+          <form onSubmit={handleSearch} className="flex items-center bg-surface-800 border border-surface-600 rounded-2xl p-1.5 shadow-xl shadow-black/20">
+            <svg className="w-5 h-5 text-slate-500 ml-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input 
+              type="text" 
+              placeholder="What do you want to learn today?" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent px-3 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none"
+            />
+            <button 
+              type="submit"
+              className="bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition"
+            >
+              Search
+            </button>
+          </form>
+        </div>
+
+        {/* Category Filters */}
+        <div className="px-4 md:px-6 max-w-7xl mx-auto flex flex-wrap gap-2 mb-6">
+          {categories.map(cat => (
+            <button
+              key={cat.name}
+              onClick={() => filterByCategory(cat.name)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5 ${
+                categoryFilter === cat.name 
+                  ? 'bg-primary-600/15 border-primary-600 text-primary-400 shadow-md shadow-primary-600/10' 
+                  : 'bg-surface-800 border-surface-600 text-slate-400 hover:border-surface-500 hover:text-white'
+              }`}
+            >
+              <span>{cat.icon}</span>
+              <span>{cat.name}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Courses Grid */}
+        <section className="px-4 md:px-6 max-w-7xl mx-auto">
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map(n => (
+                <div key={n} className="bg-surface-800 border border-surface-600 rounded-2xl overflow-hidden">
+                  <div className="h-44 skeleton animate-pulse rounded-2xl bg-slate-700 mb-4"></div>
+                  <div className="p-5 space-y-3">
+                    <div className="h-4 skeleton rounded w-1/3"></div>
+                    <div className="h-5 skeleton rounded w-3/4"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : courses.length === 0 ? (
+            <div className="text-center py-16 bg-card border border-border rounded-3xl max-w-lg mx-auto p-8 shadow-xl">
+              <div className="w-16 h-16 bg-slate-900 border border-border rounded-2xl flex items-center justify-center text-2xl mx-auto mb-5">
+                🔍
+              </div>
+              <h3 className="text-white font-extrabold text-base mb-2">No matching courses</h3>
+              <p className="text-slate-500 text-xs mb-6 max-w-sm mx-auto leading-relaxed">
+                We couldn't find any courses matching your search criteria.
+              </p>
+              <button 
+                onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }} 
+                className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition cursor-pointer"
+              >
+                Reset Filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {courses.map(course => (
+                <Link 
+                  to={`/course/${course.id}`} 
+                  key={course.id}
+                  className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover"
+                >
+                  <div className="h-44 bg-surface-900 relative overflow-hidden">
+                    <img 
+                      src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+                      alt={course.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-surface-900/60 to-transparent"></div>
+                    <span className="absolute top-3 left-3 glass px-3 py-1 rounded-lg text-[10px] font-extrabold text-primary-400 uppercase tracking-widest">
+                      {course.category || "General"}
+                    </span>
+                  </div>
+                  <div className="p-5 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="text-white font-bold text-base group-hover:text-primary-400 transition leading-snug mb-2 line-clamp-2">
+                        {course.title}
+                      </h3>
+                      <p className="text-slate-400 text-[11px] line-clamp-2 leading-relaxed mb-4">
+                        {course.description}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between pt-4 border-t border-surface-600">
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500 uppercase tracking-wider font-semibold">Price</span>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-white font-extrabold text-sm">
+                            {(course.discountPrice || course.price) === 0 ? 'Free' : `₹${course.discountPrice || course.price}`}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-primary-400 group-hover:translate-x-1 transition flex items-center space-x-1">
+                        <span>View Details</span>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -167,7 +303,7 @@ const Home = () => {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[1, 2, 3, 4, 5, 6].map(n => (
               <div key={n} className="bg-surface-800 border border-surface-600 rounded-2xl overflow-hidden">
                 <div className="h-44 skeleton"></div>
@@ -181,21 +317,28 @@ const Home = () => {
             ))}
           </div>
         ) : courses.length === 0 ? (
-          <div className="text-center py-20 bg-surface-800/30 border border-surface-600 rounded-2xl">
-            <div className="text-5xl mb-4">📖</div>
-            <h3 className="text-slate-300 font-semibold text-lg mb-2">No courses found</h3>
-            <p className="text-slate-500 text-sm mb-6">Try using different search keywords or filter by category.</p>
-            <button onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }} className="bg-primary-600/10 border border-primary-600/20 text-primary-400 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-primary-600/20 transition">
-              Reset Filters
+          <div className="text-center py-16 bg-card border border-border rounded-3xl max-w-lg mx-auto p-8 shadow-xl">
+            <div className="w-16 h-16 bg-slate-900 border border-border rounded-2xl flex items-center justify-center text-2xl mx-auto mb-5">
+              🔍
+            </div>
+            <h3 className="text-white font-extrabold text-base mb-2">No matching courses</h3>
+            <p className="text-slate-500 text-xs mb-6 max-w-sm mx-auto leading-relaxed">
+              We couldn't find any courses matching your search criteria. Try removing search keywords or selecting another category filter.
+            </p>
+            <button 
+              onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }} 
+              className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition duration-200 cursor-pointer"
+            >
+              Reset All Filters
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="flex overflow-x-auto pb-4 gap-6 snap-x snap-mandatory flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:overflow-x-visible md:pb-0 scrollbar-none">
             {courses.map(course => (
               <Link 
                 to={`/course/${course.id}`} 
                 key={course.id}
-                className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover"
+                className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover w-[290px] shrink-0 snap-start md:w-auto md:shrink"
               >
                 {/* Thumbnail */}
                 <div className="h-44 bg-surface-900 relative overflow-hidden">
@@ -260,7 +403,7 @@ const Home = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="flex overflow-x-auto pb-4 gap-6 snap-x snap-mandatory flex-nowrap md:grid md:grid-cols-3 md:overflow-x-visible md:pb-0 scrollbar-none">
           {[
             {
               icon: (
@@ -301,7 +444,7 @@ const Home = () => {
             const c = colorMap[feature.color];
             
             return (
-              <div key={idx} className="glass rounded-2xl p-7 card-hover group">
+              <div key={idx} className="glass rounded-2xl p-7 card-hover group w-[290px] shrink-0 snap-start md:w-auto md:shrink">
                 <div className={`w-14 h-14 rounded-xl ${c.bg} border ${c.border} ${c.text} flex items-center justify-center mb-5 group-hover:scale-110 transition`}>
                   {feature.icon}
                 </div>
