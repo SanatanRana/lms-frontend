@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
 const Toast = ({ type = 'success', message, onClose, duration = 3000 }) => {
   useEffect(() => {
@@ -15,15 +15,15 @@ const Toast = ({ type = 'success', message, onClose, duration = 3000 }) => {
 
   const baseStyles = "fixed bottom-5 right-5 z-50 p-4 rounded-xl shadow-xl flex items-center space-x-2 border transition duration-300 animate-slide-up";
   const typeStyles = {
-    success: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
-    error: "bg-rose-500/10 border-rose-500/30 text-rose-400",
-    warning: "bg-amber-500/10 border-amber-500/30 text-amber-400",
-    info: "bg-blue-500/10 border-blue-500/30 text-blue-400"
+    success: "bg-success-bg border-success/30 text-success",
+    error: "bg-error-bg border-error/30 text-error",
+    warning: "bg-warning-bg border-warning/30 text-warning",
+    info: "bg-info-bg border-info/30 text-info"
   };
 
   const icons = {
     success: (
-      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
@@ -47,10 +47,10 @@ const Toast = ({ type = 'success', message, onClose, duration = 3000 }) => {
   return (
     <div className={`${baseStyles} ${typeStyles[type] || typeStyles.success}`}>
       {icons[type]}
-      <span className="text-sm font-medium">{message}</span>
+      <span className="text-sm font-semibold">{message}</span>
       <button 
         onClick={onClose}
-        className="text-slate-400 hover:text-slate-200 transition-colors p-1 rounded hover:bg-white/5 cursor-pointer"
+        className="text-text-muted hover:text-white transition-colors p-1 rounded hover:bg-white/5 cursor-pointer"
         aria-label="Close notification"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

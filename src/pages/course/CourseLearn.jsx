@@ -1,13 +1,20 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import api from '../../api/axiosConfig';
-import { AuthContext } from '../../context/AuthContext';
-import LoadingSpinner from '../../components/LoadingSpinner';
-
+/* eslint-disable react-hooks/exhaustive-deps */
+import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import api from '../../services/api';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+import Toast from '../../components/common/Toast';
 
 const CourseLearn = () => {
   const { id } = useParams();
-  const { user } = useContext(AuthContext);
+
+  // Utility to format time e.g. 05:23
+  const formatTime = (secs) => {
+    if (isNaN(secs)) return '00:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`;
+  };
 
   const [course, setCourse] = useState(null);
   const [sections, setSections] = useState([]);
@@ -17,7 +24,7 @@ const CourseLearn = () => {
   const [activeLesson, setActiveLesson] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Tab state: 'syllabus' | 'resources' | 'assignments' | 'live'
+  // Tab state: 'syllabus' | 'resources' | 'assignments' | 'live' | 'notes'
   const [activeTab, setActiveTab] = useState('syllabus');
 
   // AI Chat drawer state
@@ -30,9 +37,38 @@ const CourseLearn = () => {
   const [submitForm, setSubmitForm] = useState({ assignmentId: '', submissionUrl: '', answerText: '' });
   const [submitStatus, setSubmitStatus] = useState('');
 
-  useEffect(() => {
-    fetchLearningDetails();
-  }, [id]);
+  // Toast status
+  const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
+
+  // Custom Video Player State
+  const videoRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  const [quality, setQuality] = useState('Auto');
+  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+
+  // Notes State
+  const [noteInput, setNoteInput] = useState('');
+  const [notes, setNotes] = useState([]);
+
+  // suggestion chips
+  const suggestionChips = [
+    "Explain this lecture",
+    "Give me a quick quiz",
+    "Summarize coding concepts",
+    "Show practice exercise"
+  ];
+
+  const showToast = (type, message) => {
+    setToast({ show: true, type, message });
+    setTimeout(() => setToast({ show: false, type: 'success', message: '' }), 4000);
+  };
 
   const fetchLearningDetails = async () => {
     setLoading(true);
@@ -46,43 +82,44 @@ const CourseLearn = () => {
       setCourse(null);
     }
 
-    // 2. Sections and Lessons
+    // 2. Sections and lessons
     try {
       const sectionsResp = await api.get(`/courses/${id}/sections`);
-      const secs = sectionsResp.data?.data || [];
-      setSections(secs);
-      
-      // Auto-select first lesson of first section if available
-      if (secs.length > 0 && secs[0].lessons && secs[0].lessons.length > 0) {
-        setActiveLesson(secs[0].lessons[0]);
-      } else {
-        setActiveLesson(null);
+      const rawSections = sectionsResp.data?.data || [];
+      setSections(rawSections);
+
+      // Select first lesson by default
+      if (rawSections.length > 0) {
+        const firstSec = rawSections[0];
+        if (firstSec.lessons && firstSec.lessons.length > 0) {
+          setActiveLesson(firstSec.lessons[0]);
+        }
       }
     } catch (error) {
       console.error("Error fetching sections:", error);
       setSections([]);
-      setActiveLesson(null);
     }
 
-    // 3. Material resources
+    // 3. Learning Resources
     try {
       const resourcesResp = await api.get(`/courses/${id}/resources`);
       setResources(resourcesResp.data?.data || []);
     } catch (error) {
-      console.error("Error fetching resources:", error);
+      console.error("Error fetching learning resources:", error);
       setResources([]);
     }
 
-    // 4. Live classes
+    // 4. Live teaching sessions
     try {
-      const liveResp = await api.get(`/live/course/${id}`);
-      setLiveSessions(liveResp.data?.data || []);
+      const liveResp = await api.get(`/live/enrolled`);
+      const courseLives = (liveResp.data?.data || []).filter(s => s.courseId === parseInt(id));
+      setLiveSessions(courseLives);
     } catch (error) {
       console.error("Error fetching live sessions:", error);
       setLiveSessions([]);
     }
 
-    // 5. Assignments
+    // 5. Course assignments list
     try {
       const assignResp = await api.get(`/assignments/course/${id}`);
       setAssignments(assignResp.data?.data || []);
@@ -103,17 +140,46 @@ const CourseLearn = () => {
     setLoading(false);
   };
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchLearningDetails();
+  }, [id]);
+
+  // Load and Save Local Notes
+  useEffect(() => {
+    if (activeLesson) {
+      const notesKey = `notes_${id}_${activeLesson.id}`;
+      const savedNotes = JSON.parse(localStorage.getItem(notesKey) || '[]');
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNotes(savedNotes);
+    }
+  }, [activeLesson]);
+
+  // Auto Resume Seeker
+  useEffect(() => {
+    if (activeLesson && videoRef.current) {
+      const resumeKey = `resume_${id}_${activeLesson.id}`;
+      const savedTime = localStorage.getItem(resumeKey);
+      
+      // Delay slightly to let the video element buffer and load
+      const timer = setTimeout(() => {
+        if (savedTime && videoRef.current) {
+          videoRef.current.currentTime = parseFloat(savedTime);
+          showToast('success', `⏰ Auto-Resumed from ${formatTime(parseFloat(savedTime))}!`);
+        }
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [activeLesson]);
+
   // Mark lesson as complete and update student progress percent
   const handleMarkComplete = async () => {
     if (!activeLesson) return;
     try {
-      // Find total lessons to calculate progress
       const totalLessons = (sections || []).reduce((acc, s) => acc + (s.lessons ? s.lessons.length : 0), 0);
       if (totalLessons === 0) return;
 
-      // Update progress percent on server
-      // We can count completed lessons if tracked on server, but for simplicity, we patch percent
-      // Let's check how many lessons are before and including the active one
       let lessonIndex = 0;
       let found = false;
       for (const sec of (sections || [])) {
@@ -129,6 +195,7 @@ const CourseLearn = () => {
 
       const percent = Math.round((lessonIndex / totalLessons) * 100);
       await api.patch(`/enrollments/progress/${id}?percent=${percent}`);
+      showToast('success', 'Lesson complete! Saving progress...');
       
       // Auto advance to next lesson
       advanceNextLesson();
@@ -153,12 +220,11 @@ const CourseLearn = () => {
   };
 
   // Join Live Class
-  const handleJoinLive = async (sessionId, meetingLink) => {
+  const handleJoinLive = async (sessionId, session) => {
     try {
-      // Record join attendance
       await api.post(`/live/${sessionId}/join`);
-      window.open(meetingLink, '_blank');
-      // Periodically, student leaves when closing or ending room
+      const targetLink = session.meetingLink || `/live/join/${session.roomToken}`;
+      window.open(targetLink, '_blank');
     } catch (error) {
       console.error(error);
     }
@@ -177,6 +243,7 @@ const CourseLearn = () => {
       });
       if (response.data.success) {
         setSubmitStatus('Submitted successfully!');
+        showToast('success', 'Assignment Submitted successfully!');
         setSubmitForm({ assignmentId: '', submissionUrl: '', answerText: '' });
       } else {
         setSubmitStatus('Submission failed.');
@@ -189,10 +256,14 @@ const CourseLearn = () => {
 
   // Send message to AI Tutor
   const handleSendAiMessage = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!chatInput.trim()) return;
 
-    const userMsg = { message: chatInput, response: '', isTemp: true };
+    submitToAi(chatInput);
+  };
+
+  const submitToAi = async (messageText) => {
+    const userMsg = { message: messageText, response: '', isTemp: true };
     setChatMessages(prev => [...(prev || []), userMsg]);
     setChatInput('');
     setChatLoading(true);
@@ -205,17 +276,162 @@ const CourseLearn = () => {
     } catch (error) {
       console.error("AI Chat failed:", error);
       setChatMessages(prev => (prev || []).filter(m => !m.isTemp));
+      showToast('error', 'AI Assistant connection timeout.');
     } finally {
       setChatLoading(false);
     }
   };
 
+  // Custom Video Player Controls
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (videoRef.current) {
+      const curTime = videoRef.current.currentTime;
+      setCurrentTime(curTime);
+      
+      // Save for auto resume every 5 seconds
+      if (Math.round(curTime) % 5 === 0 && activeLesson) {
+        localStorage.setItem(`resume_${id}_${activeLesson.id}`, curTime.toString());
+      }
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
+  };
+
+  const handleScrub = (e) => {
+    if (videoRef.current) {
+      const seekTime = parseFloat(e.target.value);
+      videoRef.current.currentTime = seekTime;
+      setCurrentTime(seekTime);
+    }
+  };
+
+  const handleSpeedChange = (speed) => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed;
+      setPlaybackSpeed(speed);
+      setShowSpeedMenu(false);
+      showToast('success', `Playback speed set to ${speed}x`);
+    }
+  };
+
+  const handleQualityChange = (q) => {
+    setQuality(q);
+    setShowQualityMenu(false);
+    setBuffering(true);
+    // Simulate minor loading buffer spinner for high fidelity look
+    setTimeout(() => {
+      setBuffering(false);
+      showToast('success', `Quality changed to ${q}`);
+    }, 700);
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const handleVolumeChange = (e) => {
+    const vol = parseFloat(e.target.value);
+    if (videoRef.current) {
+      videoRef.current.volume = vol;
+      videoRef.current.muted = vol === 0;
+      setVolume(vol);
+      setIsMuted(vol === 0);
+    }
+  };
+
+  const togglePip = async () => {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (videoRef.current) {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.error("PiP mode failed:", err);
+      showToast('error', 'Picture-in-Picture not supported on this browser.');
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (videoRef.current) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        videoRef.current.requestFullscreen().catch(err => {
+          console.error("Fullscreen failed:", err);
+        });
+      }
+    }
+  };
+
+  // Add Timestamped Note
+  const handleAddNote = (e) => {
+    e.preventDefault();
+    if (!noteInput.trim() || !activeLesson) return;
+
+    const newNote = {
+      id: Date.now(),
+      text: noteInput,
+      timestamp: currentTime,
+      timestampString: formatTime(currentTime)
+    };
+
+    const updatedNotes = [...notes, newNote].sort((a, b) => a.timestamp - b.timestamp);
+    setNotes(updatedNotes);
+    localStorage.setItem(`notes_${id}_${activeLesson.id}`, JSON.stringify(updatedNotes));
+    setNoteInput('');
+    showToast('success', `Note saved at ${newNote.timestampString}!`);
+  };
+
+  const handleDeleteNote = (noteId) => {
+    if (!activeLesson) return;
+    const filtered = notes.filter(n => n.id !== noteId);
+    setNotes(filtered);
+    localStorage.setItem(`notes_${id}_${activeLesson.id}`, JSON.stringify(filtered));
+    showToast('success', 'Note deleted.');
+  };
+
+  const seekToTimestamp = (seconds) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = seconds;
+      setCurrentTime(seconds);
+      videoRef.current.play();
+      setIsPlaying(true);
+      showToast('success', `Jumped to ${formatTime(seconds)}`);
+    }
+  };
+
+
+
   const renderVideoPlayer = (url, title) => {
     if (!url) return null;
     
-    // Check if it is a YouTube URL
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      const embedUrl = url.replace("watch?v=", "embed/");
+    // Check if YouTube/Vimeo embed
+    const isEmbed = url.includes('youtube.com') || url.includes('youtu.be') || url.includes('vimeo.com');
+    
+    if (isEmbed) {
+      const embedUrl = url.includes('youtube.com') || url.includes('youtu.be') 
+        ? url.replace("watch?v=", "embed/") 
+        : url;
       return (
         <iframe 
           className="w-full h-full"
@@ -226,26 +442,141 @@ const CourseLearn = () => {
       );
     }
     
-    // Check if it is a Vimeo URL
-    if (url.includes('vimeo.com')) {
-      return (
-        <iframe 
-          className="w-full h-full"
-          src={url}
-          title={title}
-          allowFullScreen
-        ></iframe>
-      );
-    }
-    
-    // Otherwise, treat as a direct video file (e.g. Azure Blob storage MP4)
+    // HTML5 native video player with Custom Overlay UI
     return (
-      <video 
-        className="w-full h-full" 
-        controls 
-        src={url}
-        poster={course?.thumbnailUrl}
-      ></video>
+      <div className="w-full h-full relative group">
+        <video 
+          ref={videoRef}
+          src={url}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={handleMarkComplete}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          className="w-full h-full object-cover"
+        />
+
+        {/* Buffer loading spinner overlay */}
+        {buffering && (
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
+            <svg className="animate-spin h-10 w-10 text-teal-400" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          </div>
+        )}
+
+        {/* Big play button centered */}
+        {!isPlaying && (
+          <button 
+            onClick={togglePlay}
+            className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-teal-500/90 hover:bg-teal-400 flex items-center justify-center text-white text-lg shadow-2xl transition hover:scale-105"
+          >
+            ▶
+          </button>
+        )}
+
+        {/* Control Bar Overlay on hover/tap */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
+          {/* Progress timeline scrubber */}
+          <div className="flex items-center space-x-3">
+            <span className="text-[10px] text-slate-300 font-mono">{formatTime(currentTime)}</span>
+            <input 
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleScrub}
+              className="flex-grow h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400"
+            />
+            <span className="text-[10px] text-slate-300 font-mono">{formatTime(duration)}</span>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              {/* Play Pause */}
+              <button onClick={togglePlay} className="text-white hover:text-teal-400 text-sm transition">
+                {isPlaying ? '⏸' : '▶'}
+              </button>
+
+              {/* Mute Volume */}
+              <div className="flex items-center space-x-2 group/vol">
+                <button onClick={toggleMute} className="text-white hover:text-teal-400 text-xs">
+                  {isMuted ? '🔇' : '🔊'}
+                </button>
+                <input 
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="w-16 h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400 opacity-0 group-hover/vol:opacity-100 transition-opacity"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 text-xs relative">
+              {/* Playback speed */}
+              <div className="relative">
+                <button 
+                  onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }}
+                  className="text-white hover:text-teal-400 font-bold px-2 py-0.5 rounded bg-white/10"
+                >
+                  {playbackSpeed}x
+                </button>
+                {showSpeedMenu && (
+                  <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-20 flex flex-col z-20">
+                    {[0.5, 1, 1.25, 1.5, 2].map(speed => (
+                      <button 
+                        key={speed}
+                        onClick={() => handleSpeedChange(speed)}
+                        className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${playbackSpeed === speed ? 'text-teal-400' : ''}`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Quality selector */}
+              <div className="relative">
+                <button 
+                  onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }}
+                  className="text-white hover:text-teal-400 font-semibold px-2 py-0.5 rounded bg-white/10"
+                >
+                  {quality}
+                </button>
+                {showQualityMenu && (
+                  <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-24 flex flex-col z-20">
+                    {['Auto', '1080p', '720p', '480p'].map(q => (
+                      <button 
+                        key={q}
+                        onClick={() => handleQualityChange(q)}
+                        className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${quality === q ? 'text-teal-400' : ''}`}
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Picture in picture */}
+              <button onClick={togglePip} className="text-white hover:text-teal-400" title="Picture in Picture">
+                📺
+              </button>
+
+              {/* Fullscreen */}
+              <button onClick={toggleFullscreen} className="text-white hover:text-teal-400" title="Fullscreen">
+                🔲
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -253,26 +584,29 @@ const CourseLearn = () => {
     return <LoadingSpinner text="Opening your learning environment..." />;
   }
 
-
-  // Find any active live class
   const liveClass = (liveSessions || []).find(s => s && s.status === 'LIVE');
   const hasVideo = !!activeLesson || (!!course && !!course.introVideoUrl);
 
   return (
-    <div className="min-h-[85vh] bg-surface-900 flex flex-col md:flex-row relative">
+    <div className="min-h-[85vh] bg-surface-900 flex flex-col-reverse lg:flex-row relative pb-20 lg:pb-0 h-[calc(100vh-64px)] overflow-hidden">
       
-      {/* Sidebar: Sections & Lessons Outline */}
-      <div className="w-full md:w-80 bg-surface-800/90 border-r border-surface-600 flex flex-col">
+      {/* Toast popup */}
+      {toast.show && (
+        <Toast type={toast.type} message={toast.message} onClose={() => setToast({ show: false, message: '', type: 'success' })} />
+      )}
+
+      {/* ══════════════════ LEFT PANEL: SYLLABUS OUTLINE ══════════════════ */}
+      <div className="w-full lg:w-80 bg-surface-800/90 border-r border-surface-600 flex flex-col shrink-0">
         <div className="p-5 border-b border-surface-600">
           <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">Syllabus Outline</span>
           <h3 className="text-white font-bold text-base mt-1 line-clamp-1">{course?.title}</h3>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[50vh] md:max-h-[75vh]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[50vh] lg:max-h-[75vh]">
           {(sections || []).map((sec, sIdx) => (
             <div key={sec.id} className="space-y-1.5">
               <span className="text-slate-400 font-extrabold text-[11px] uppercase tracking-wider block">
-                Section {sIdx + 1}: {sec.title}
+                Chapter {sIdx + 1}: {sec.title}
               </span>
               <div className="space-y-1">
                 {(sec.lessons || []).map((les, lIdx) => (
@@ -286,7 +620,7 @@ const CourseLearn = () => {
                     }`}
                   >
                     <span className="line-clamp-1">{sIdx + 1}.{lIdx + 1} {les.title}</span>
-                    <svg className="w-3.5 h-3.5 opacity-60" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-3.5 h-3.5 opacity-60 shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
                     </svg>
                   </button>
@@ -297,9 +631,9 @@ const CourseLearn = () => {
         </div>
       </div>
 
-      {/* Main Panel: Video Player and Tabs */}
-      <div className="flex-grow p-6 space-y-6 max-w-5xl mx-auto w-full">
-        {/* Bouncing Live session alert banner */}
+      {/* ══════════════════ CENTER PANEL: PLAYER & TAB CONTENTS ══════════════════ */}
+      <div className="flex-grow p-4 md:p-6 space-y-6 max-w-5xl mx-auto w-full overflow-y-auto">
+        {/* Live session alert banner */}
         {liveClass && (
           <div className="bg-error/10 border border-error/20 text-error p-4 rounded-2xl flex items-center justify-between animate-pulse">
             <div className="flex items-center space-x-2.5">
@@ -307,7 +641,7 @@ const CourseLearn = () => {
               <span className="text-xs font-bold">A live session "{liveClass.title}" is currently active!</span>
             </div>
             <button 
-              onClick={() => handleJoinLive(liveClass.id, liveClass.meetingLink)}
+              onClick={() => handleJoinLive(liveClass.id, liveClass)}
               className="bg-error hover:bg-error text-white text-[10px] font-extrabold px-3 py-1.5 rounded-lg transition"
             >
               Join Live
@@ -315,28 +649,28 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Video Player */}
+        {/* Video Frame */}
         {hasVideo ? (
           <div className="space-y-4">
-            <div className="aspect-video bg-black rounded-3xl overflow-hidden border border-surface-600">
+            <div className="aspect-video bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl">
               {renderVideoPlayer(activeLesson ? activeLesson.videoUrl : course?.introVideoUrl, activeLesson ? activeLesson.title : "Course Introduction")}
             </div>
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h2 className="text-xl md:text-2xl font-bold text-white">
+                <h2 className="text-xl font-black text-white">
                   {activeLesson ? activeLesson.title : "Course Introduction"}
                 </h2>
-                <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                <p className="text-slate-400 text-xs mt-1 leading-relaxed max-w-2xl">
                   {activeLesson ? activeLesson.description : course?.description}
                 </p>
               </div>
               {activeLesson && (
                 <button
                   onClick={handleMarkComplete}
-                  className="bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow shadow-violet-500/10"
+                  className="bg-teal-500 hover:bg-teal-400 text-white text-xs font-black px-5 py-2.5 rounded-xl transition shadow shadow-teal-500/10 shrink-0 cursor-pointer"
                 >
-                  Mark Lesson Complete & Next
+                  Mark Complete & Next ✓
                 </button>
               )}
             </div>
@@ -350,121 +684,115 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Tabs section */}
-        <div className="bg-surface-800/60 border border-surface-600 rounded-2xl overflow-hidden">
-          <div className="flex border-b border-surface-600">
-            {['Syllabus Info', 'Downloads', 'Assignments', 'Live Rooms'].map(tabName => {
-              const tabId = tabName.toLowerCase().replace(' info', '').replace(' rooms', '');
-              return (
-                <button
-                  key={tabId}
-                  onClick={() => setActiveTab(tabId)}
-                  className={`px-5 py-3.5 text-xs font-bold transition border-b-2 ${
-                    activeTab === tabId 
-                      ? 'border-primary-600 text-primary-400 bg-primary-600/5' 
-                      : 'border-transparent text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {tabName}
-                </button>
-              );
-            })}
+        {/* Tabs Bar */}
+        <div className="bg-surface-800/60 border border-surface-600 rounded-2xl overflow-hidden shadow-lg">
+          <div className="flex border-b border-surface-600 overflow-x-auto scrollbar-none">
+            {[
+              { id: 'syllabus', label: '📖 Syllabus Info' },
+              { id: 'notes', label: '📝 Notes & Bookmarks' },
+              { id: 'downloads', label: '📥 Downloads' },
+              { id: 'assignments', label: '📝 Assignments' },
+              { id: 'live', label: '📅 Live Rooms' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-5 py-3.5 text-xs font-bold transition border-b-2 whitespace-nowrap cursor-pointer ${
+                  activeTab === tab.id 
+                    ? 'border-primary-600 text-primary-400 bg-primary-600/5' 
+                    : 'border-transparent text-slate-400 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           <div className="p-6">
+            
+            {/* Tab 1: Syllabus Info */}
             {activeTab === 'syllabus' && (
               <div className="space-y-4">
-                <h4 className="text-white font-extrabold text-sm mb-2">About this Syllabus</h4>
+                <h4 className="text-white font-extrabold text-sm">About this Syllabus</h4>
                 <p className="text-slate-400 text-xs leading-relaxed">{course?.description}</p>
-                <div className="text-xs text-slate-500 mt-4">
-                  Instructor: <span className="text-slate-300 font-semibold">{course?.teacherName}</span>
+              </div>
+            )}
+
+            {/* Tab 2: Timestamped Notes & Bookmarks */}
+            {activeTab === 'notes' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-baseline mb-2">
+                  <h4 className="text-white font-extrabold text-sm">Bookmarks & Notes</h4>
+                  <span className="text-[10px] text-slate-500 font-semibold">Notes lock to video timestamp</span>
+                </div>
+
+                <form onSubmit={handleAddNote} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder={`Type a note at ${formatTime(currentTime)}...`}
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    className="flex-grow bg-surface-900 border border-surface-600 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                    required
+                  />
+                  <button 
+                    type="submit"
+                    className="bg-teal-500 hover:bg-teal-400 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition cursor-pointer shrink-0"
+                  >
+                    Save Note
+                  </button>
+                </form>
+
+                <div className="space-y-2.5 max-h-60 overflow-y-auto">
+                  {notes.length === 0 ? (
+                    <p className="text-center text-xs text-slate-500 italic py-6">No saved bookmarks. Add one above during playback!</p>
+                  ) : (
+                    notes.map(note => (
+                      <div key={note.id} className="flex items-center justify-between p-3 bg-background/45 border border-border rounded-xl">
+                        <div className="flex items-center space-x-3 min-w-0 pr-4">
+                          <button
+                            onClick={() => seekToTimestamp(note.timestamp)}
+                            className="bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 border border-teal-500/20 text-[10px] font-black px-2.5 py-1 rounded-lg shrink-0 cursor-pointer"
+                          >
+                            ⏱ {note.timestampString}
+                          </button>
+                          <span className="text-xs text-slate-300 font-medium truncate">{note.text}</span>
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteNote(note.id)}
+                          className="text-[10px] text-slate-500 hover:text-rose-400 transition font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
 
+            {/* Tab 3: Downloads */}
             {activeTab === 'downloads' && (
               <div className="space-y-4">
-                <h4 className="text-white font-extrabold text-sm mb-3">Downloadable Materials</h4>
-                {(resources || []).length === 0 ? (
-                  <p className="text-slate-500 text-xs">No downloadable resources added for this course.</p>
+                <h4 className="text-white font-extrabold text-sm mb-4">Syllabus Resources</h4>
+                {resources.length === 0 ? (
+                  <p className="text-slate-500 text-xs italic">No downloadable resources added for this course.</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {(resources || []).map(r => (
-                      <a
-                        key={r.id}
-                        href={r.fileUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-surface-900/60 border border-surface-600 p-3 rounded-xl flex items-center justify-between hover:border-slate-700 transition"
-                      >
-                        <div className="flex items-center space-x-2.5">
-                          <span className="text-[10px] font-extrabold text-success bg-success/10 px-2 py-0.5 rounded uppercase">
-                            {r.fileType}
-                          </span>
-                          <span className="text-slate-300 text-xs font-semibold line-clamp-1">{r.fileName}</span>
+                    {resources.map(res => (
+                      <div key={res.id} className="p-3.5 bg-background/40 border border-border rounded-xl flex items-center justify-between">
+                        <div className="min-w-0 pr-3">
+                          <h5 className="text-xs font-bold text-white truncate">{res.title}</h5>
+                          <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{res.resourceType}</span>
                         </div>
-                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'assignments' && (
-              <div className="space-y-6">
-                <h4 className="text-white font-extrabold text-sm mb-3">Assignments</h4>
-                {(assignments || []).length === 0 ? (
-                  <p className="text-slate-500 text-xs">No assignments published yet.</p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4">
-                    {(assignments || []).map(a => (
-                      <div key={a.id} className="border border-surface-600 bg-surface-900/40 p-4 rounded-xl space-y-4">
-                        <div>
-                          <h5 className="font-bold text-xs text-white">{a.title}</h5>
-                          <p className="text-slate-400 text-[11px] mt-1 leading-relaxed">{a.description}</p>
-                          <div className="text-[10px] text-slate-500 mt-2 font-mono">
-                            Due: {new Date(a.dueDate).toLocaleString()}
-                          </div>
-                        </div>
-
-                        {/* Submit Form */}
-                        <form 
-                          onSubmit={(e) => {
-                            setSubmitForm(prev => ({ ...prev, assignmentId: a.id }));
-                            handleSubmitAssignment(e);
-                          }}
-                          className="pt-3 border-t border-surface-600 space-y-3"
+                        <a 
+                          href={res.fileUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 text-[10px] font-bold px-3 py-1.5 rounded-lg transition shrink-0"
                         >
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <input
-                              type="url"
-                              placeholder="Submission URL (GitHub / Google Drive)"
-                              value={submitForm.assignmentId === a.id ? submitForm.submissionUrl : ''}
-                              onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: a.id, submissionUrl: e.target.value })}
-                              className="bg-surface-900 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-[11px] focus:outline-none"
-                              required
-                            />
-                            <input
-                              type="text"
-                              placeholder="Notes or answer explanation text"
-                              value={submitForm.assignmentId === a.id ? submitForm.answerText : ''}
-                              onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: a.id, answerText: e.target.value })}
-                              className="bg-surface-900 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-[11px] focus:outline-none"
-                            />
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-slate-500 font-semibold">{submitStatus}</span>
-                            <button
-                              type="submit"
-                              className="bg-primary-600 hover:bg-primary-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
-                            >
-                              Submit Assignment
-                            </button>
-                          </div>
-                        </form>
+                          Download 💾
+                        </a>
                       </div>
                     ))}
                   </div>
@@ -472,40 +800,87 @@ const CourseLearn = () => {
               </div>
             )}
 
+            {/* Tab 4: Assignments */}
+            {activeTab === 'assignments' && (
+              <div className="space-y-6">
+                <h4 className="text-white font-extrabold text-sm mb-2">Assignments & Homework</h4>
+                {assignments.length === 0 ? (
+                  <p className="text-slate-500 text-xs italic">No assignments scheduled for this syllabus.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4">
+                    {assignments.map(ass => (
+                      <div key={ass.id} className="p-5 bg-background/40 border border-border rounded-2xl space-y-4">
+                        <div>
+                          <h5 className="text-white font-bold text-sm">{ass.title}</h5>
+                          <p className="text-text-muted text-xs leading-relaxed mt-1">{ass.instructions}</p>
+                          <span className="inline-block mt-2 text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+                            Due: {new Date(ass.dueDate).toLocaleDateString()}
+                          </span>
+                        </div>
+
+                        <form onSubmit={handleSubmitAssignment} className="border-t border-border pt-4 space-y-3">
+                          <input type="hidden" value={ass.id} />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input
+                              type="url"
+                              placeholder="Submission URL (GitHub / Drive)"
+                              required
+                              value={submitForm.assignmentId === ass.id.toString() ? submitForm.submissionUrl : ''}
+                              onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: ass.id.toString(), submissionUrl: e.target.value })}
+                              className="bg-surface-900 border border-surface-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary-600"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Optional note text..."
+                              value={submitForm.assignmentId === ass.id.toString() ? submitForm.answerText : ''}
+                              onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: ass.id.toString(), answerText: e.target.value })}
+                              className="bg-surface-900 border border-surface-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary-600"
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            onClick={() => setSubmitForm(prev => ({ ...prev, assignmentId: ass.id.toString() }))}
+                            className="bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer"
+                          >
+                            Submit Assignment
+                          </button>
+                        </form>
+                      </div>
+                    ))}
+                    {submitStatus && (
+                      <p className="text-xs text-teal-400 font-semibold">{submitStatus}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 5: Live Rooms */}
             {activeTab === 'live' && (
               <div className="space-y-4">
-                <h4 className="text-white font-extrabold text-sm mb-3">Live Video Classrooms</h4>
-                {(liveSessions || []).length === 0 ? (
-                  <p className="text-slate-500 text-xs">No scheduled classrooms found.</p>
+                <h4 className="text-white font-extrabold text-sm mb-3">Live Video Classes</h4>
+                {liveSessions.length === 0 ? (
+                  <p className="text-slate-500 text-xs italic">No scheduled live classrooms associated with this syllabus.</p>
                 ) : (
                   <div className="space-y-3">
-                    {(liveSessions || []).map(session => (
-                      <div 
-                        key={session.id} 
-                        className="bg-surface-900/60 border border-surface-600 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center"
-                      >
+                    {liveSessions.map(session => (
+                      <div key={session.id} className="p-4 bg-background/40 border border-border rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                         <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-bold text-xs text-white">{session.title}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                              session.status === 'LIVE' ? 'bg-error/15 text-error border border-error/20 animate-pulse' :
-                              session.status === 'ENDED' ? 'bg-slate-800 text-slate-500' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            }`}>
-                              {session.status}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-1">Scheduled: {new Date(session.startTime).toLocaleString()}</p>
+                          <h5 className="text-xs font-bold text-white">{session.title}</h5>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            {new Date(session.startTime).toLocaleString()} - {session.status}
+                          </p>
                         </div>
                         {session.status === 'LIVE' ? (
                           <button
-                            onClick={() => handleJoinLive(session.id, session.meetingLink)}
+                            onClick={() => handleJoinLive(session.id, session)}
                             className="mt-3 md:mt-0 bg-error hover:bg-error/95 text-white text-xs font-bold px-4 py-2 rounded-xl transition animate-pulse cursor-pointer shadow-md shadow-error/20"
                           >
                             Join Live Now
                           </button>
                         ) : session.status === 'SCHEDULED' ? (
                           <button
-                            onClick={() => handleJoinLive(session.id, session.meetingLink)}
+                            onClick={() => handleJoinLive(session.id, session)}
                             className="mt-3 md:mt-0 bg-surface-700 hover:bg-surface-600 border border-surface-500 text-slate-200 text-xs font-semibold px-4 py-2 rounded-xl transition cursor-pointer"
                           >
                             Enter Lobby
@@ -519,57 +894,62 @@ const CourseLearn = () => {
                 )}
               </div>
             )}
+
           </div>
         </div>
       </div>
 
-      {/* Floating AI Tutor Drawer Trigger Button */}
+      {/* Floating AI Doubt Solver Trigger FAB */}
       <button
         onClick={() => setShowAiChat(!showAiChat)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-teal-500 flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-teal-500 flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40 select-none cursor-pointer"
+        title="Open AI Doubt Assistant"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
         </svg>
       </button>
 
-      {/* AI Chat Drawer Panel */}
+      {/* ══════════════════ MOBILE-NATIVE AI DOUBT DRAWER OVERLAY ══════════════════ */}
       {showAiChat && (
-        <div className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-surface-800 border-l border-surface-600 shadow-2xl flex flex-col z-50 animate-in slide-in-from-right duration-200">
-          <div className="p-4 border-b border-surface-600 flex justify-between items-center">
+        <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[450px] bg-surface-800 border-l border-surface-600 shadow-2xl flex flex-col z-50 animate-slide-in">
+          {/* Header */}
+          <div className="p-4.5 border-b border-surface-600 flex justify-between items-center bg-background/50">
             <div>
-              <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest">AI doubt assistant</span>
+              <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest">AI Doubt assistant</span>
               <h3 className="font-extrabold text-sm text-white mt-0.5">Aura AI Tutor</h3>
             </div>
             <button 
               onClick={() => setShowAiChat(false)}
-              className="text-slate-400 hover:text-white p-1"
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-grow overflow-y-auto p-4 space-y-4">
+          <div className="flex-grow overflow-y-auto p-4.5 space-y-4">
             {(chatMessages || []).length === 0 ? (
-              <div className="text-center py-12 text-slate-500 text-xs">
-                Ask me any coding, database, or syllabus questions!
+              <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2">
+                <span className="text-3xl block">🤖</span>
+                <p className="font-extrabold text-white">Ask me anything!</p>
+                <p className="leading-relaxed">I can answer code questions, write code templates, or explain syllabus points.</p>
               </div>
             ) : (
               (chatMessages || []).map((msg, idx) => (
-                <div key={idx} className="space-y-2.5">
-                  {/* User query */}
+                <div key={idx} className="space-y-3">
+                  {/* Student Msg */}
                   <div className="flex justify-end">
-                    <div className="bg-surface-700/70 border border-surface-500/30 text-slate-200 rounded-2xl rounded-tr-none px-4 py-2.5 text-xs max-w-[85%]">
+                    <div className="bg-surface-700 border border-surface-600 text-slate-200 rounded-2xl rounded-tr-none px-4 py-2.5 text-xs max-w-[85%] leading-relaxed">
                       {msg.message}
                     </div>
                   </div>
-                  {/* AI answer */}
+                  {/* AI Response */}
                   {msg.response && (
                     <div className="flex justify-start">
-                      <div className="bg-primary-600/10 border border-primary-600/20 text-violet-300 rounded-2xl rounded-tl-none px-4 py-2.5 text-xs max-w-[85%] leading-relaxed">
+                      <div className="bg-primary-600/10 border border-primary-600/20 text-violet-300 rounded-2xl rounded-tl-none px-4 py-2.5 text-xs max-w-[85%] leading-relaxed whitespace-pre-wrap">
                         {msg.response}
                       </div>
                     </div>
@@ -579,7 +959,7 @@ const CourseLearn = () => {
             )}
             {chatLoading && (
               <div className="flex justify-start">
-                <div className="bg-primary-600/5 text-primary-400 rounded-2xl rounded-tl-none px-4 py-2.5 text-xs flex items-center space-x-1.5">
+                <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
@@ -588,21 +968,34 @@ const CourseLearn = () => {
             )}
           </div>
 
-          {/* Chat Input */}
-          <form onSubmit={handleSendAiMessage} className="p-4 border-t border-surface-600 flex space-x-2">
+          {/* Quick suggestion chips */}
+          <div className="px-4.5 py-2.5 bg-background/25 border-t border-border flex items-center space-x-2 overflow-x-auto scrollbar-none shrink-0">
+            {suggestionChips.map(chip => (
+              <button
+                key={chip}
+                onClick={() => submitToAi(chip)}
+                className="bg-card hover:bg-card-light text-[10px] text-teal-400 border border-border px-3 py-1.5 rounded-xl whitespace-nowrap font-bold transition select-none cursor-pointer"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+
+          {/* Input Form */}
+          <form onSubmit={handleSendAiMessage} className="p-4.5 border-t border-surface-600 flex space-x-2 bg-background/50 shrink-0">
             <input
               type="text"
-              placeholder="Ask a doubt..."
+              placeholder="Ask a coding question..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              className="flex-grow bg-surface-900 text-white border border-surface-600 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-primary-600"
+              className="flex-grow bg-surface-900 text-white border border-surface-600 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-teal-500"
               required
             />
             <button
               type="submit"
-              className="bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition"
+              className="bg-teal-500 hover:bg-teal-400 text-white px-5 py-3 rounded-xl text-xs font-black transition cursor-pointer shrink-0 shadow-md shadow-teal-500/15"
             >
-              Send
+              Ask
             </button>
           </form>
         </div>

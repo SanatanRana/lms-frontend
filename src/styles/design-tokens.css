@@ -1,0 +1,64 @@
+/* AuraLMS Design System Tokens — Tailwind CSS v4 Theme Extender */
+
+@theme {
+  /* Colors */
+  --color-primary: #0d9488;        /* Teal 600 */
+  --color-primary-hover: #0f766e;  /* Teal 700 */
+  --color-primary-light: #14b8a6;  /* Teal 500 */
+  
+  --color-secondary: #475569;      /* Slate 600 */
+  --color-secondary-hover: #334155;/* Slate 700 */
+  
+  --color-success: #10b981;        /* Emerald 500 */
+  --color-success-bg: rgba(16, 185, 129, 0.1);
+  
+  --color-error: #f43f5e;          /* Rose 500 */
+  --color-error-bg: rgba(244, 63, 94, 0.1);
+  
+  --color-warning: #f59e0b;        /* Amber 500 */
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
+  
+  --color-info: #3b82f6;           /* Blue 500 */
+  --color-info-bg: rgba(59, 130, 246, 0.1);
+
+  --color-background: #0c1222;     /* Core deep dark theme background */
+  --color-card: #111827;           /* Card background */
+  --color-card-light: #1a2332;     /* Lighter surface / hover card */
+  --color-border: #1e293b;         /* Border slate-800 */
+  --color-border-light: rgba(255, 255, 255, 0.05);
+
+  --color-text-main: #f1f5f9;      /* Slate 100 */
+  --color-text-muted: #94a3b8;     /* Slate 400 */
+  --color-text-inverse: #0c1222;   /* Deep Dark text for light elements */
+
+  /* Spacing: Using default Tailwind 8px numerical scale. Custom values commented out to prevent layout conflicts. */
+  /*
+  --spacing-xxs: 4px;
+  --spacing-xs: 8px;
+  --spacing-sm: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 48px;
+  */
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-xxl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 20px rgba(13, 148, 136, 0.15);
+
+  /* Animation Standards */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 500ms cubic-bezier(0.4, 0, 0.2, 1);
+}

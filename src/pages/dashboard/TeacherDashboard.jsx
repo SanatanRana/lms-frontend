@@ -1,17 +1,48 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api from '../../api/axiosConfig';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import Toast from '../../components/Toast';
+import { useState, useEffect, useContext } from 'react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import api from '../../services/api';
+import Toast from '../../components/common/Toast';
+import { AuthContext } from '../../context/AuthContext';
+
+// CSV Exporter (defined outside to satisfy react-hooks/purity rules)
+const exportToCSV = (data, filename, onSuccess, onError) => {
+  if (!data.length) {
+    if (onError) onError('No data to export.');
+    return;
+  }
+  const headers = Object.keys(data[0]).join(',');
+  const rows = data.map(row => 
+    Object.values(row).map(val => {
+      if (val === null || val === undefined) return '';
+      if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
+      return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
+    }).join(',')
+  );
+  const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `${filename}_logs_${Date.now()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  if (onSuccess) onSuccess('Logs exported to CSV successfully!');
+};
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  const userName = user?.name || localStorage.getItem('userName') || 'Teacher';
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Datasets
   const [courses, setCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Course edit state
-  const [currentTab, setCurrentTab] = useState('active'); // 'active' vs 'archived'
+  // Course Edit & Actions
+  const [courseFilterTab, setCourseFilterTab] = useState('active'); // 'active' | 'archived'
   const [editingCourse, setEditingCourse] = useState(null);
   const [editCourseForm, setEditCourseForm] = useState({
     title: '',
@@ -23,28 +54,49 @@ const TeacherDashboard = () => {
     introVideoUrl: ''
   });
 
-  // Syllabus management state
+  // Syllabus & Chapter Manager
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [sections, setSections] = useState([]);
   const [newSectionTitle, setNewSectionTitle] = useState('');
   
-  // Lesson state
+  // Lessons
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [lessonForm, setLessonForm] = useState({ title: '', description: '', videoUrl: '' });
-
-  // Edit states for sections and lessons
-  const [editingSectionId, setEditingSectionId] = useState(null);
-  const [editingSectionTitle, setEditingSectionTitle] = useState('');
+  const [showLessonModal, setShowLessonModal] = useState(false);
   const [editingLessonId, setEditingLessonId] = useState(null);
-  const [editingLessonForm, setEditingLessonForm] = useState({ title: '', description: '', videoUrl: '' });
 
-  // Resource state
+  const handleStartAddLesson = (section) => {
+    setSelectedSectionId(section.id);
+    setEditingLessonId(null);
+    setLessonForm({ title: '', description: '', videoUrl: '' });
+    setShowLessonModal(true);
+  };
+
+  const handleStartEditLesson = (section, lesson) => {
+    setSelectedSectionId(section.id);
+    setEditingLessonId(lesson.id);
+    setLessonForm({ title: lesson.title, description: lesson.description || '', videoUrl: lesson.videoUrl || '' });
+    setShowLessonModal(true);
+  };
+
+  const handleUpdateSection = async (sectionId, updatedTitle) => {
+    try {
+      const response = await api.put(`/sections/${sectionId}`, { title: updatedTitle });
+      if (response.data.success) {
+        selectCourseForSyllabus(selectedCourse);
+        showNotification('success', 'Chapter updated successfully!');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to update chapter.');
+    }
+  };
+
+  // Resources
   const [resourceForm, setResourceForm] = useState({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
   const [resources, setResources] = useState([]);
-  const [editingResourceId, setEditingResourceId] = useState(null);
-  const [editingResourceForm, setEditingResourceForm] = useState({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
 
-  // Live session scheduler state
+  // Live scheduling state
   const [liveForm, setLiveForm] = useState({
     courseId: '',
     title: '',
@@ -58,12 +110,29 @@ const TeacherDashboard = () => {
 
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [uploadingResource, setUploadingResource] = useState(false);
-
   const [notification, setNotification] = useState({ type: '', msg: '' });
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  // Student Doubt reply Desk & Homework submissions mock datastream
+  const [doubts, setDoubts] = useState([
+    { id: 1, studentName: "Rajesh Kumar", courseName: "Full Stack Web Dev", question: "How does the virtual DOM work in React 19? Can you explain fiber reconciliation?", replies: [] },
+    { id: 2, studentName: "Priya Sharma", courseName: "UI/UX Foundations", question: "What is the optimal mobile grid padding for 390px layouts?", replies: [] }
+  ]);
+  const [doubtReplies, setDoubtReplies] = useState({});
+
+  const [homeworks, setHomeworks] = useState([
+    { id: 101, studentName: "Vikram Malhotra", courseName: "Full Stack Web Dev", title: "React Props Homework", submissionUrl: "https://github.com/vikram/props-assignment", status: "Submitted", grade: "", feedback: "" },
+    { id: 102, studentName: "Neha Gupta", courseName: "UI/UX Foundations", title: "Mobile Wireframe Mockups", submissionUrl: "https://figma.com/file/neha-mockup", status: "Submitted", grade: "", feedback: "" }
+  ]);
+
+  const [attendanceLogs] = useState([
+    { id: 1, sessionName: "React Hooks Masterclass", studentName: "Rajesh Kumar", email: "rajesh@gmail.com", joinedAt: "10:05 AM", stayDuration: "50 mins", attendance: "Present" },
+    { id: 2, sessionName: "React Hooks Masterclass", studentName: "Priya Sharma", email: "priya@gmail.com", joinedAt: "10:07 AM", stayDuration: "48 mins", attendance: "Present" },
+    { id: 3, sessionName: "Figma Grid Layouts", studentName: "Neha Gupta", email: "neha@gmail.com", joinedAt: "02:00 PM", stayDuration: "60 mins", attendance: "Present" }
+  ]);
+
+  const showNotification = (type, msg) => {
+    setNotification({ type, msg });
+  };
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -81,7 +150,7 @@ const TeacherDashboard = () => {
 
       // 2. Fetch live sessions
       const liveResp = await api.get('/live/my-sessions');
-      setLiveSessions(liveResp.data.data);
+      setLiveSessions(liveResp.data.data || []);
     } catch (error) {
       console.error("Error fetching teacher dashboard data:", error);
     } finally {
@@ -89,7 +158,10 @@ const TeacherDashboard = () => {
     }
   };
 
-  // ── Course Edit & Archive Handlers ──
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchDashboardData();
+  }, []);
 
   const handleStartEditCourse = (course) => {
     setEditingCourse(course);
@@ -129,7 +201,7 @@ const TeacherDashboard = () => {
   };
 
   const handleDeleteCourse = async (courseId) => {
-    if (!window.confirm("Are you sure you want to delete/archive this course? If it has students enrolled, it will be Archived (preserving student access and billing records). If it is empty, it will be permanently deleted.")) return;
+    if (!window.confirm("Are you sure you want to delete/archive this course? If it has students enrolled, it will be Archived. If it is empty, it will be permanently deleted.")) return;
     try {
       const response = await api.delete(`/courses/${courseId}`);
       if (response.data.success) {
@@ -149,7 +221,7 @@ const TeacherDashboard = () => {
     try {
       const response = await api.post(`/courses/${courseId}/restore`);
       if (response.data.success) {
-        showNotification('success', 'Course published/restored successfully!');
+        showNotification('success', 'Course published successfully!');
         fetchDashboardData();
       }
     } catch (error) {
@@ -158,13 +230,11 @@ const TeacherDashboard = () => {
     }
   };
 
-  // ── Syllabus Sections & Lessons ──
-
+  // Syllabus Chapters & Lessons
   const selectCourseForSyllabus = async (course) => {
     setSelectedCourse(course);
     setSelectedSectionId(null);
     setNewSectionTitle('');
-    setEditingResourceId(null);
     try {
       const response = await api.get(`/courses/${course.id}/sections`);
       setSections(response.data?.data || []);
@@ -194,96 +264,13 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleAddLesson = async (e) => {
-    e.preventDefault();
-    if (!lessonForm.title.trim()) return;
-
-    try {
-      const response = await api.post(`/sections/${selectedSectionId}/lessons`, lessonForm);
-      if (response.data.success) {
-        // Refresh sections to reload lessons
-        selectCourseForSyllabus(selectedCourse);
-        setLessonForm({ title: '', description: '', videoUrl: '' });
-        setSelectedSectionId(null);
-        showNotification('success', 'Lesson added to section successfully!');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to add lesson.');
-    }
-  };
-
-  const handleAddResource = async (e) => {
-    e.preventDefault();
-    if (!resourceForm.fileName.trim()) return;
-
-    try {
-      const response = await api.post(`/courses/${selectedCourse.id}/resources`, resourceForm);
-      if (response.data.success) {
-        setResources([...resources, response.data.data]);
-        setResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
-        showNotification('success', 'Resource uploaded successfully!');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to add resource.');
-    }
-  };
-
-  const handleUpdateResource = async (e, resourceId) => {
-    e.preventDefault();
-    if (!editingResourceForm.fileName.trim()) return;
-    try {
-      const response = await api.put(`/resources/${resourceId}`, editingResourceForm);
-      if (response.data.success) {
-        setResources(resources.map(res => res.id === resourceId ? response.data.data : res));
-        setEditingResourceId(null);
-        setEditingResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
-        showNotification('success', 'Resource updated successfully!');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to update resource.');
-    }
-  };
-
-  const handleDeleteResource = async (resourceId) => {
-    if (!window.confirm("Are you sure you want to delete this material?")) return;
-    try {
-      const response = await api.delete(`/resources/${resourceId}`);
-      if (response.data.success) {
-        setResources(resources.filter(res => res.id !== resourceId));
-        showNotification('success', 'Resource deleted successfully!');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to delete resource.');
-    }
-  };
-
-  const handleUpdateSection = async (sectionId) => {
-    if (!editingSectionTitle.trim()) return;
-    try {
-      const response = await api.put(`/sections/${sectionId}`, { title: editingSectionTitle });
-      if (response.data.success) {
-        setSections(sections.map(sec => sec.id === sectionId ? { ...sec, title: response.data.data.title } : sec));
-        setEditingSectionId(null);
-        setEditingSectionTitle('');
-        showNotification('success', 'Section updated successfully!');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to update section.');
-    }
-  };
-
   const handleDeleteSection = async (sectionId) => {
-    if (!window.confirm("Are you sure you want to delete this section? This will also delete all lessons in this section.")) return;
+    if (!window.confirm("Are you sure you want to delete this section? All its lessons will be orphaned or deleted.")) return;
     try {
       const response = await api.delete(`/sections/${sectionId}`);
       if (response.data.success) {
-        setSections(sections.filter(sec => sec.id !== sectionId));
-        showNotification('success', 'Section deleted successfully!');
+        setSections(sections.filter(s => s.id !== sectionId));
+        showNotification('success', 'Section deleted.');
       }
     } catch (error) {
       console.error(error);
@@ -291,20 +278,33 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleUpdateLesson = async (e, lessonId) => {
+  const handleLessonSubmit = async (e) => {
     e.preventDefault();
-    if (!editingLessonForm.title.trim()) return;
+    if (!lessonForm.title.trim()) return;
+
     try {
-      const response = await api.put(`/lessons/${lessonId}`, editingLessonForm);
-      if (response.data.success) {
-        selectCourseForSyllabus(selectedCourse);
-        setEditingLessonId(null);
-        setEditingLessonForm({ title: '', description: '', videoUrl: '' });
-        showNotification('success', 'Lesson updated successfully!');
+      if (editingLessonId) {
+        const response = await api.put(`/lessons/${editingLessonId}`, lessonForm);
+        if (response.data.success) {
+          selectCourseForSyllabus(selectedCourse);
+          setLessonForm({ title: '', description: '', videoUrl: '' });
+          setEditingLessonId(null);
+          setShowLessonModal(false);
+          showNotification('success', 'Lesson updated successfully!');
+        }
+      } else {
+        if (!selectedSectionId) return;
+        const response = await api.post(`/sections/${selectedSectionId}/lessons`, lessonForm);
+        if (response.data.success) {
+          selectCourseForSyllabus(selectedCourse);
+          setLessonForm({ title: '', description: '', videoUrl: '' });
+          setShowLessonModal(false);
+          showNotification('success', 'Lesson added successfully to chapter!');
+        }
       }
     } catch (error) {
       console.error(error);
-      showNotification('error', 'Failed to update lesson.');
+      showNotification('error', 'Failed to save lesson.');
     }
   };
 
@@ -323,6 +323,7 @@ const TeacherDashboard = () => {
   };
 
   const handleFileUpload = async (file, type) => {
+    if (!file) return;
     const formData = new FormData();
     formData.append('file', file);
 
@@ -334,35 +335,20 @@ const TeacherDashboard = () => {
 
     try {
       const response = await api.post('/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (response.data.success) {
         const fileUrl = response.data.data.url;
         if (type === 'video') {
-          if (editingLessonId) {
-            setEditingLessonForm(prev => ({ ...prev, videoUrl: fileUrl }));
-          } else {
-            setLessonForm(prev => ({ ...prev, videoUrl: fileUrl }));
-          }
+          setLessonForm(prev => ({ ...prev, videoUrl: fileUrl }));
           showNotification('success', 'Video uploaded successfully to Azure Storage!');
         } else {
-          if (editingResourceId) {
-            setEditingResourceForm(prev => ({
-              ...prev,
-              fileUrl,
-              fileName: prev.fileName || response.data.data.fileName,
-              fileSize: parseInt(response.data.data.fileSize)
-            }));
-          } else {
-            setResourceForm(prev => ({ 
-              ...prev, 
-              fileUrl,
-              fileName: prev.fileName || response.data.data.fileName,
-              fileSize: parseInt(response.data.data.fileSize)
-            }));
-          }
+          setResourceForm(prev => ({ 
+            ...prev, 
+            fileUrl,
+            fileName: prev.fileName || response.data.data.fileName,
+            fileSize: parseInt(response.data.data.fileSize)
+          }));
           showNotification('success', 'Document uploaded successfully to Azure Storage!');
         }
       } else {
@@ -380,14 +366,50 @@ const TeacherDashboard = () => {
     }
   };
 
-  // ── Live Class Management ──
+  // Resource creation
+  const handleResourceSubmit = async (e) => {
+    e.preventDefault();
+    if (!resourceForm.fileName.trim() || !resourceForm.fileUrl.trim()) return;
 
+    try {
+      const response = await api.post(`/courses/${selectedCourse.id}/resources`, {
+        fileName: resourceForm.fileName,
+        fileType: 'PDF',
+        fileUrl: resourceForm.fileUrl,
+        fileSize: 1024
+      });
+      if (response.data.success) {
+        selectCourseForSyllabus(selectedCourse);
+        setResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
+        showNotification('success', 'Resource file registered successfully!');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to register resource.');
+    }
+  };
+
+  const handleDeleteResource = async (resId) => {
+    if (!window.confirm("Delete this resource file?")) return;
+    try {
+      const response = await api.delete(`/courses/resources/${resId}`);
+      if (response.data.success) {
+        selectCourseForSyllabus(selectedCourse);
+        showNotification('success', 'Resource deleted.');
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to delete resource.');
+    }
+  };
+
+  // Live Class Scheduling
   const handleScheduleLive = async (e) => {
     e.preventDefault();
     try {
       const formatDateTime = (dtStr) => {
         if (!dtStr) return "";
-        if (dtStr.length === 16) return dtStr + ":00"; // YYYY-MM-DDTHH:MM -> add :00
+        if (dtStr.length === 16) return dtStr + ":00";
         return dtStr;
       };
 
@@ -471,7 +493,7 @@ const TeacherDashboard = () => {
   };
 
   const handleDeleteSession = async (sessionId) => {
-    if (!window.confirm("Are you sure you want to delete this live class session? This action cannot be undone.")) return;
+    if (!window.confirm("Are you sure you want to delete this live class session?")) return;
     try {
       const response = await api.delete(`/live/${sessionId}`);
       if (response.data.success) {
@@ -491,14 +513,27 @@ const TeacherDashboard = () => {
     try {
       const response = await api.patch(`/live/${sessionId}/start`);
       if (response.data.success) {
-        setLiveSessions(liveSessions.map(s => s.id === sessionId ? response.data.data : s));
+        const sessionData = response.data.data;
+        setLiveSessions(liveSessions.map(s => s.id === sessionId ? sessionData : s));
         showNotification('success', 'Session started! Redirecting to classroom...');
         setTimeout(() => {
-          navigate(`/live/classroom/${sessionId}`);
+          navigate(`/live/classroom/${sessionData.roomToken}`, {
+            state: {
+              sessionId: sessionData.id,
+              micEnabled: true,
+              camEnabled: true,
+              role: 'TEACHER',
+              name: userName,
+              title: sessionData.title,
+              courseName: sessionData.course?.title || sessionData.courseName,
+              teacherName: sessionData.teacher?.name || userName
+            }
+          });
         }, 1000);
       }
     } catch (error) {
       console.error(error);
+      showNotification('error', 'Failed to start session.');
     }
   };
 
@@ -514,941 +549,630 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleUploadRecording = async (sessionId, file) => {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    setUploadingVideo(true);
-    try {
-      const response = await api.post(`/live/${sessionId}/recording`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      if (response.data.success) {
-        setLiveSessions(liveSessions.map(s => s.id === sessionId ? response.data.data : s));
-        showNotification('success', 'Recording uploaded successfully!');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to upload recording.');
-    } finally {
-      setUploadingVideo(false);
-    }
-  };
-
-  const handleDeleteRecording = async (sessionId) => {
-    if (!window.confirm("Are you sure you want to delete the recording?")) return;
-    try {
-      const response = await api.delete(`/live/${sessionId}/recording`);
-      if (response.data.success) {
-        setLiveSessions(liveSessions.map(s => s.id === sessionId ? response.data.data : s));
-        showNotification('success', 'Recording deleted.');
-      }
-    } catch (error) {
-      console.error(error);
-      showNotification('error', 'Failed to delete recording.');
-    }
-  };
-
-  const showNotification = (type, msg) => {
-    setNotification({ type, msg });
-    setTimeout(() => setNotification({ type: '', msg: '' }), 3000);
-  };
-
   if (loading) {
-    return <LoadingSpinner text="Loading teacher workspace..." />;
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8 animate-fade-in">
+        {/* Welcome HUD Skeleton */}
+        <div className="bg-card border border-border rounded-3xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-2.5 w-full md:w-1/2">
+            <div className="h-4 skeleton rounded-lg w-1/4"></div>
+            <div className="h-8 skeleton rounded-xl w-3/4"></div>
+          </div>
+          <div className="h-10 skeleton rounded-xl w-48 shrink-0"></div>
+        </div>
+
+        {/* Stats Grid Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(n => (
+            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3">
+              <div className="h-3 skeleton rounded w-1/2"></div>
+              <div className="h-7 skeleton rounded-lg w-3/4"></div>
+              <div className="h-2.5 skeleton rounded w-2/3"></div>
+            </div>
+          ))}
+        </div>
+
+        {/* Dashboard Panels Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 bg-card border border-border rounded-3xl p-6 space-y-4">
+            <div className="h-6 skeleton rounded-lg w-1/3"></div>
+            <div className="h-36 skeleton rounded-2xl w-full"></div>
+          </div>
+          <div className="bg-card border border-border rounded-3xl p-6 space-y-4">
+            <div className="h-6 skeleton rounded-lg w-1/2"></div>
+            <div className="h-32 skeleton rounded-2xl w-full"></div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-12 max-w-7xl mx-auto px-4">
-      {/* Alert Notification */}
+    <div className="space-y-8 max-w-7xl mx-auto px-4 py-6 animate-fade-in relative pb-16">
+      
+      {/* Toast Popup */}
       <Toast 
         type={notification.type} 
         message={notification.msg} 
         onClose={() => setNotification({ type: '', msg: '' })} 
       />
 
-      {/* Hero Welcome */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-primary-900/40 to-teal-900/40 border border-surface-600 p-8 shadow">
-        <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-2">Teacher Workspace</h2>
-        <p className="text-slate-300 text-sm max-w-xl">
-          Publish and update courses, organize syllabus sections and lessons, or schedule interactive live classrooms for students.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left 2 Columns: Course List and Syllabus Creator */}
-        <div className="lg:col-span-2 space-y-8">
-          
-             <section className="bg-surface-800 border border-surface-600 rounded-2xl p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-surface-600 pb-4 mb-6 gap-4">
-              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
-                <span className="w-2 h-4 rounded bg-primary-500"></span>
-                <span>My Courses</span>
-              </h3>
-              
-              <div className="flex space-x-2 bg-surface-900/50 p-1 rounded-xl border border-surface-600 self-start sm:self-auto">
-                <button
-                  onClick={() => setCurrentTab('active')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    currentTab === 'active'
-                      ? 'bg-primary-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Active ({courses.filter(c => c.active).length})
-                </button>
-                <button
-                  onClick={() => setCurrentTab('archived')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    currentTab === 'archived'
-                      ? 'bg-amber-600/20 text-amber-400 border border-amber-500/20 shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Archived ({courses.filter(c => !c.active).length})
-                </button>
-              </div>
+      {/* ══════════════════ SYLLABUS EDITOR OVERLAY VIEW ══════════════════ */}
+      {selectedCourse ? (
+        <div className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-6">
+          {/* Header */}
+          <div className="flex justify-between items-start border-b border-border/50 pb-5">
+            <div>
+              <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-wider block">
+                Syllabus Editor
+              </span>
+              <h2 className="text-2xl font-black text-white mt-1">{selectedCourse.title}</h2>
             </div>
+            <button
+              onClick={() => setSelectedCourse(null)}
+              className="text-xs font-bold text-slate-400 hover:text-white transition flex items-center space-x-1.5 cursor-pointer"
+            >
+              <span>Close</span>
+            </button>
+          </div>
 
-            {courses.filter(c => currentTab === 'active' ? c.active : !c.active).length === 0 ? (
-              <p className="text-slate-500 text-sm py-4">
-                {currentTab === 'active' 
-                  ? 'No active courses published yet. Use "+ New Course" at the top to publish one!'
-                  : 'No archived courses.'}
+          {/* Add Section/Chapter Form */}
+          <form onSubmit={handleAddSection} className="flex gap-3">
+            <input
+              type="text"
+              placeholder="New Section Title (e.g. Getting Started)"
+              value={newSectionTitle}
+              onChange={(e) => setNewSectionTitle(e.target.value)}
+              className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-teal-500"
+              required
+            />
+            <button type="submit" className="bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-3 rounded-xl transition cursor-pointer select-none">
+              + Add Section
+            </button>
+          </form>
+
+          {/* Chapters Outline */}
+          <div className="space-y-6 pt-4">
+            {sections.length === 0 ? (
+              <p className="text-center text-xs text-slate-500 italic py-16 bg-background/25 border border-dashed border-border rounded-2xl">
+                No chapters added yet. Create the first one above!
               </p>
             ) : (
-              <div className="divide-y divide-[#1e293b] space-y-4">
-                {courses.filter(c => currentTab === 'active' ? c.active : !c.active).map(course => (
-                  <div key={course.id} className="pt-4 first:pt-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                      <div className="flex items-center space-x-2 flex-wrap gap-1">
-                        <h4 className="text-white font-bold text-base">{course.title}</h4>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          course.active 
-                            ? 'bg-emerald-500/10 text-emerald-400' 
-                            : 'bg-amber-500/10 text-amber-400'
-                        }`}>
-                          {course.active ? 'Published' : 'Archived'}
-                        </span>
-                      </div>
-                      <p className="text-slate-400 text-xs mt-1">{course.category} | Price: ₹{course.price}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-3 md:mt-0 shrink-0">
+              sections.map((sec, sIdx) => (
+                <div key={sec.id} className="bg-background/45 border border-border rounded-2xl p-5 space-y-4">
+                  {/* Chapter Header */}
+                  <div className="flex justify-between items-center pb-3 border-b border-border/30">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-sm font-black text-white">{sIdx + 1}. {sec.title}</span>
                       <button
-                        onClick={() => selectCourseForSyllabus(course)}
-                        className="bg-primary-600/10 hover:bg-primary-600/20 text-primary-400 border border-primary-600/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        onClick={() => handleUpdateSection(sec.id, prompt('Update Chapter Title:', sec.title) || sec.title)}
+                        className="text-[10px] text-slate-500 hover:text-slate-350 font-bold"
                       >
-                        Manage Syllabus
+                        Edit
                       </button>
                       <button
-                        onClick={() => handleStartEditCourse(course)}
-                        className="bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        onClick={() => handleDeleteSection(sec.id)}
+                        className="text-[10px] text-slate-500 hover:text-error font-bold"
                       >
-                        Edit Details
+                        Delete
                       </button>
-                      {course.active ? (
-                        <button
-                          onClick={() => handleDeleteCourse(course.id)}
-                          className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          title="Archive/Delete Course"
-                        >
-                          Archive
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleRestoreCourse(course.id)}
-                          className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          title="Restore/Publish Course"
-                        >
-                          Restore
-                        </button>
-                      )}
                     </div>
+                    
+                    <button
+                      onClick={() => handleStartAddLesson(sec)}
+                      className="text-xs font-black text-primary-400 hover:text-primary-300 cursor-pointer"
+                    >
+                      + Add Lesson
+                    </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
 
-          {/* Manage Syllabus details */}
-          {selectedCourse && (
-            <section className="bg-surface-800 border border-surface-600 rounded-2xl p-6 space-y-6">
-              <div className="flex justify-between items-center pb-4 border-b border-surface-600">
-                <div>
-                  <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">Syllabus Editor</span>
-                  <h3 className="text-lg font-bold text-white mt-1">{selectedCourse.title}</h3>
+                  {/* Lessons */}
+                  <div className="space-y-3.5 pl-4">
+                    {(sec.lessons || []).length === 0 ? (
+                      <p className="text-[10px] text-slate-500 italic">No video lectures added yet.</p>
+                    ) : (
+                      (sec.lessons || []).map((les, lIdx) => (
+                        <div key={les.id} className="bg-background/80 border border-border/50 p-4 rounded-xl flex justify-between items-start gap-4">
+                          <div className="space-y-1">
+                            <h5 className="text-white font-bold text-xs">{sIdx + 1}.{lIdx + 1} {les.title}</h5>
+                            {les.description && <p className="text-[10px] text-slate-400 leading-normal">{les.description}</p>}
+                            {les.videoUrl && (
+                              <a href={les.videoUrl} target="_blank" rel="noreferrer" className="text-[10px] text-primary-400 hover:underline block break-all font-mono">
+                                {les.videoUrl}
+                              </a>
+                            )}
+                          </div>
+                          
+                          <div className="flex space-x-2 shrink-0">
+                            <button
+                              onClick={() => handleStartEditLesson(sec, les)}
+                              className="text-[10px] font-bold text-slate-500 hover:text-slate-350"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteLesson(les.id)}
+                              className="text-[10px] font-bold text-slate-500 hover:text-error"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-                <button 
-                  onClick={() => setSelectedCourse(null)}
-                  className="text-xs text-slate-400 hover:text-white"
-                >
-                  Close
-                </button>
-              </div>
+              ))
+            )}
+          </div>
 
-              {/* Add Section Form */}
-              <form onSubmit={handleAddSection} className="flex space-x-2">
-                <input
-                  type="text"
-                  placeholder="New Section Title (e.g. Getting Started)"
-                  value={newSectionTitle}
-                  onChange={(e) => setNewSectionTitle(e.target.value)}
-                  className="flex-grow bg-surface-900/50 text-white border border-surface-600 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-primary-600"
-                  required
-                />
-                <button
-                  type="submit"
-                  className="bg-primary-600 hover:bg-primary-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition"
-                >
-                  + Add Section
-                </button>
-              </form>
-
-              {/* Sections & Lessons Listing */}
-              <div className="space-y-4">
-                {(sections || []).length === 0 ? (
-                  <p className="text-slate-500 text-xs py-4">No sections added yet. Create one above.</p>
-                ) : (
-                  (sections || []).map((sec, idx) => (
-                    <div key={sec.id} className="border border-surface-600 rounded-xl p-4 bg-surface-900/20">
-                      <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
-                        {editingSectionId === sec.id ? (
-                          <div className="flex items-center space-x-2 flex-grow max-w-md">
-                            <input
-                              type="text"
-                              value={editingSectionTitle}
-                              onChange={(e) => setEditingSectionTitle(e.target.value)}
-                              className="flex-grow bg-surface-900 text-white border border-primary-600/50 rounded-lg px-2.5 py-1 text-xs focus:outline-none"
-                              required
-                            />
-                            <button
-                              onClick={() => handleUpdateSection(sec.id)}
-                              className="bg-primary-600 hover:bg-primary-500 text-white text-xs px-2.5 py-1 rounded-md font-semibold transition"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => setEditingSectionId(null)}
-                              className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-2.5 py-1 rounded-md transition"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-3">
-                            <span className="text-white font-bold text-sm">
-                              {idx + 1}. {sec.title}
-                            </span>
-                            <div className="flex space-x-2 opacity-50 hover:opacity-100 transition">
-                              <button
-                                onClick={() => {
-                                  setEditingSectionId(sec.id);
-                                  setEditingSectionTitle(sec.title);
-                                }}
-                                className="text-[10px] text-primary-400 hover:text-primary-300 font-semibold underline"
-                                title="Edit Section Name"
-                              >
-                                Edit
-                              </button>
-                              <span className="text-slate-700 text-[10px]">|</span>
-                              <button
-                                onClick={() => handleDeleteSection(sec.id)}
-                                className="text-[10px] text-error hover:text-rose-300 font-semibold underline"
-                                title="Delete Section"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                        <button
-                          onClick={() => setSelectedSectionId(sec.id)}
-                          className="text-xs text-primary-400 hover:text-primary-300 font-semibold"
-                        >
-                          + Add Lesson
-                        </button>
+          {/* Downloadable PDF Materials */}
+          <div className="pt-6 border-t border-border/50 space-y-6">
+            <div>
+              <h4 className="text-white font-extrabold text-xs uppercase tracking-wider mb-2">Current Study Materials ({resources.length})</h4>
+              {resources.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-4">No materials added yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {resources.map(res => (
+                    <div key={res.id} className="bg-background/45 border border-border p-4 rounded-xl flex justify-between items-center">
+                      <div className="min-w-0">
+                        <span className="text-white font-bold text-xs block truncate">{res.title || res.fileName}</span>
+                        <a href={res.fileUrl} target="_blank" rel="noreferrer" className="text-[9px] text-slate-500 hover:underline truncate block">
+                          {res.fileUrl}
+                        </a>
                       </div>
-
-                      {/* Lessons list */}
-                      <div className="pl-4 space-y-3 border-l border-surface-600">
-                        {sec.lessons && sec.lessons.length > 0 ? (
-                          sec.lessons.map((lesson, lIdx) => (
-                            <div key={lesson.id}>
-                              {editingLessonId === lesson.id ? (
-                                <form onSubmit={(e) => handleUpdateLesson(e, lesson.id)} className="bg-surface-900/60 border border-primary-600/30 rounded-xl p-4 space-y-3 mt-1">
-                                  <h5 className="text-primary-400 font-bold text-[11px] uppercase tracking-wider">Edit Lesson</h5>
-                                  <input
-                                    type="text"
-                                    placeholder="Lesson Title"
-                                    value={editingLessonForm.title}
-                                    onChange={(e) => setEditingLessonForm({ ...editingLessonForm, title: e.target.value })}
-                                    className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                                    required
-                                  />
-                                  <textarea
-                                    placeholder="Description"
-                                    value={editingLessonForm.description || ''}
-                                    onChange={(e) => setEditingLessonForm({ ...editingLessonForm, description: e.target.value })}
-                                    rows="2"
-                                    className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                                  />
-                                  <div className="space-y-1">
-                                    <input
-                                      type="url"
-                                      placeholder="Video Embed URL"
-                                      value={editingLessonForm.videoUrl}
-                                      onChange={(e) => setEditingLessonForm({ ...editingLessonForm, videoUrl: e.target.value })}
-                                      className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                                      required
-                                      disabled={uploadingVideo}
-                                    />
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-[10px] text-slate-500">Or upload MP4:</span>
-                                      <input
-                                        type="file"
-                                        accept="video/*"
-                                        onChange={(e) => {
-                                          if (e.target.files && e.target.files[0]) {
-                                            handleFileUpload(e.target.files[0], 'video');
-                                          }
-                                        }}
-                                        className="text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-primary-600/10 file:text-primary-400 hover:file:bg-primary-600/20 cursor-pointer"
-                                        disabled={uploadingVideo}
-                                      />
-                                      {uploadingVideo && <span className="text-[10px] text-amber-400 animate-pulse">Uploading to Azure...</span>}
-                                    </div>
-                                  </div>
-                                  <div className="flex space-x-2 justify-end">
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditingLessonId(null)}
-                                      className="text-xs text-slate-400 px-3 py-1.5"
-                                    >
-                                      Cancel
-                                    </button>
-                                    <button
-                                      type="submit"
-                                      className="bg-primary-600 hover:bg-primary-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
-                                    >
-                                      Save Changes
-                                    </button>
-                                  </div>
-                                </form>
-                              ) : (
-                                <div className="text-xs text-slate-300 bg-surface-900/40 p-3 rounded-lg flex justify-between items-start gap-4">
-                                  <div className="flex-grow">
-                                    <span className="font-semibold text-slate-200">{idx + 1}.{lIdx + 1} {lesson.title}</span>
-                                    {lesson.description && <p className="text-slate-400 text-[11px] mt-1">{lesson.description}</p>}
-                                    <p className="text-slate-500 text-[10px] mt-1 line-clamp-1">{lesson.videoUrl}</p>
-                                  </div>
-                                  <div className="flex space-x-2 shrink-0 opacity-40 hover:opacity-100 transition mt-0.5">
-                                    <button
-                                      onClick={() => {
-                                        setEditingLessonId(lesson.id);
-                                        setEditingLessonForm({
-                                          title: lesson.title,
-                                          description: lesson.description || '',
-                                          videoUrl: lesson.videoUrl
-                                        });
-                                      }}
-                                      className="text-[10px] text-primary-400 hover:text-primary-300 font-semibold underline"
-                                      title="Edit Lesson"
-                                    >
-                                      Edit
-                                    </button>
-                                    <span className="text-slate-700 text-[10px]">|</span>
-                                    <button
-                                      onClick={() => handleDeleteLesson(lesson.id)}
-                                      className="text-[10px] text-error hover:text-rose-300 font-semibold underline"
-                                      title="Delete Lesson"
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-slate-600 text-[10px]">No lessons in this section yet.</p>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Add Lesson Modal Overlay (conditional form) */}
-              {selectedSectionId && (
-                <div className="bg-surface-900/60 border border-surface-600 rounded-xl p-4 space-y-3">
-                  <h4 className="text-white font-bold text-xs">Add New Lesson</h4>
-                  <form onSubmit={handleAddLesson} className="space-y-3">
-                    <input
-                      type="text"
-                      placeholder="Lesson Title"
-                      value={lessonForm.title}
-                      onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
-                      className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                      required
-                    />
-                    <textarea
-                      placeholder="Description"
-                      value={lessonForm.description}
-                      onChange={(e) => setLessonForm({ ...lessonForm, description: e.target.value })}
-                      rows="2"
-                      className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                    />
-                    <div className="space-y-1">
-                      <input
-                        type="url"
-                        placeholder="Video Embed URL (e.g. YouTube/Vimeo/Azure Blob Link)"
-                        value={lessonForm.videoUrl}
-                        onChange={(e) => setLessonForm({ ...lessonForm, videoUrl: e.target.value })}
-                        className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                        required
-                        disabled={uploadingVideo}
-                      />
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[10px] text-slate-500">Or upload MP4:</span>
-                        <input
-                          type="file"
-                          accept="video/*"
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              handleFileUpload(e.target.files[0], 'video');
-                            }
-                          }}
-                          className="text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-primary-600/10 file:text-primary-400 hover:file:bg-primary-600/20 cursor-pointer"
-                          disabled={uploadingVideo}
-                        />
-                        {uploadingVideo && <span className="text-[10px] text-amber-400 animate-pulse">Uploading to Azure...</span>}
-                      </div>
-                    </div>
-                    <div className="flex space-x-2 justify-end">
                       <button
-                        type="button"
-                        onClick={() => setSelectedSectionId(null)}
-                        className="text-xs text-slate-400 px-3 py-1.5"
+                        onClick={() => handleDeleteResource(res.id)}
+                        className="text-[10px] font-bold text-slate-500 hover:text-error shrink-0 ml-2"
                       >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="bg-primary-600 hover:bg-primary-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
-                      >
-                        Save Lesson
+                        Delete
                       </button>
                     </div>
-                  </form>
+                  ))}
                 </div>
               )}
+            </div>
 
-              {/* List of current resource materials */}
-              <div className="pt-4 border-t border-surface-600 space-y-3">
-                <h4 className="text-white font-bold text-xs">Current Study Materials ({resources.length})</h4>
-                {resources.length === 0 ? (
-                  <p className="text-slate-500 text-[10px]">No materials added yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {resources.map(res => (
-                      <div key={res.id} className="text-xs bg-surface-900/30 border border-surface-600 p-3 rounded-lg">
-                        {editingResourceId === res.id ? (
-                          <form onSubmit={(e) => handleUpdateResource(e, res.id)} className="space-y-3">
-                            <input
-                              type="text"
-                              placeholder="Material Title"
-                              value={editingResourceForm.fileName}
-                              onChange={(e) => setEditingResourceForm({ ...editingResourceForm, fileName: e.target.value })}
-                              className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                              required
-                              disabled={uploadingResource}
-                            />
-                            <div className="space-y-1">
-                              <input
-                                type="url"
-                                placeholder="Document URL"
-                                value={editingResourceForm.fileUrl}
-                                onChange={(e) => setEditingResourceForm({ ...editingResourceForm, fileUrl: e.target.value })}
-                                className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
-                                required
-                                disabled={uploadingResource}
-                              />
-                              <div className="flex items-center space-x-2">
-                                <span className="text-[10px] text-slate-500">Or upload file:</span>
-                                <input
-                                  type="file"
-                                  accept=".pdf,.doc,.docx,.ppt,.pptx,.txt"
-                                  onChange={(e) => {
-                                    if (e.target.files && e.target.files[0]) {
-                                      handleFileUpload(e.target.files[0], 'resource');
-                                    }
-                                  }}
-                                  className="text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-primary-600/10 file:text-primary-400 hover:file:bg-primary-600/20 cursor-pointer"
-                                  disabled={uploadingResource}
-                                />
-                                {uploadingResource && <span className="text-[10px] text-amber-400 animate-pulse">Uploading...</span>}
-                              </div>
-                            </div>
-                            <div className="flex space-x-2 justify-end">
-                              <button
-                                type="button"
-                                onClick={() => setEditingResourceId(null)}
-                                className="text-xs text-slate-400 px-3 py-1.5"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="submit"
-                                className="bg-primary-600 hover:bg-primary-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg"
-                                disabled={uploadingResource}
-                              >
-                                Save Changes
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <div className="flex justify-between items-center gap-4">
-                            <div className="flex-grow">
-                              <span className="font-semibold text-slate-200">{res.fileName}</span>
-                              <div className="flex items-center space-x-2 mt-1">
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-primary-600/10 text-primary-400 uppercase">
-                                  {res.fileType}
-                                </span>
-                                <a 
-                                  href={res.fileUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  className="text-slate-400 hover:text-primary-400 text-[10px] underline truncate max-w-xs md:max-w-md inline-block"
-                                >
-                                  {res.fileUrl}
-                                </a>
-                              </div>
-                            </div>
-                            <div className="flex space-x-2 shrink-0 opacity-50 hover:opacity-100 transition">
-                              <button
-                                onClick={() => {
-                                  setEditingResourceId(res.id);
-                                  setEditingResourceForm({
-                                    fileName: res.fileName,
-                                    fileType: res.fileType || 'PDF',
-                                    fileUrl: res.fileUrl,
-                                    fileSize: res.fileSize || 1024
-                                  });
-                                }}
-                                className="text-[10px] text-primary-400 hover:text-primary-300 font-semibold underline"
-                                title="Edit Material"
-                              >
-                                Edit
-                              </button>
-                              <span className="text-slate-700 text-[10px]">|</span>
-                              <button
-                                onClick={() => handleDeleteResource(res.id)}
-                                className="text-[10px] text-error hover:text-rose-300 font-semibold underline"
-                                title="Delete Material"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Add Material Resources form */}
-              <div className="pt-4 border-t border-surface-600 space-y-3">
-                <h4 className="text-white font-bold text-xs">Add Downloadable PDF Materials</h4>
-                <form onSubmit={handleAddResource} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-background/45 border border-border p-5 rounded-2xl space-y-4">
+              <h4 className="text-white font-bold text-xs">Add Downloadable PDF Materials</h4>
+              <form onSubmit={handleResourceSubmit} className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 w-full space-y-1">
                   <input
                     type="text"
                     placeholder="Material Title (e.g. Slides PDF)"
                     value={resourceForm.fileName}
                     onChange={(e) => setResourceForm({ ...resourceForm, fileName: e.target.value })}
-                    className="bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
+                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
                     required
-                    disabled={uploadingResource}
                   />
+                </div>
+
+                <div className="flex-1 w-full space-y-1">
+                  <input
+                    type="text"
+                    placeholder="Document URL (https://... or Azure Blob)"
+                    value={resourceForm.fileUrl}
+                    onChange={(e) => setResourceForm({ ...resourceForm, fileUrl: e.target.value })}
+                    className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                    required
+                  />
+                </div>
+
+                <div className="w-full md:w-auto shrink-0 flex items-center gap-4">
+                  <span className="text-[10px] text-slate-500 font-bold">Or upload:</span>
+                  <input
+                    type="file"
+                    onChange={(e) => handleFileUpload(e.target.files[0], 'resource')}
+                    className="text-xs text-slate-400 file:bg-surface-700 file:border-none file:text-white file:px-3 file:py-1.5 file:rounded-lg file:cursor-pointer"
+                  />
+                </div>
+
+                <button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-2.5 rounded-xl transition cursor-pointer select-none">
+                  Add Resource
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ══════════════════ DEFAULT WORKSPACE DASHBOARD ══════════════════ */
+        <>
+          {/* Hero Banner */}
+          <div className="bg-gradient-to-r from-primary-950/40 via-card to-primary-950/10 border border-border p-8 rounded-3xl relative overflow-hidden shadow-xl">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/10 rounded-full blur-2xl animate-pulse"></div>
+            <h2 className="text-3xl font-black text-white mt-1.5 animate-fade-in">Teacher Workspace</h2>
+            <p className="text-xs text-text-muted mt-2 leading-relaxed max-w-2xl font-medium animate-fade-in">
+              Publish and update courses, organize syllabus sections and lessons, or schedule interactive live classrooms for students.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column: My Courses (2/3 width) */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-5 gap-4">
+                  <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
+                    <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-primary-500 to-teal-400"></span>
+                    <span>My Courses</span>
+                  </h3>
+                  
+                  <div className="flex space-x-2 bg-background p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto">
+                    <button
+                      onClick={() => setCourseFilterTab('active')}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer select-none ${
+                        courseFilterTab === 'active' ? 'bg-primary text-white shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Active ({courses.filter(c => c.active).length})
+                    </button>
+                    <button
+                      onClick={() => setCourseFilterTab('archived')}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer select-none ${
+                        courseFilterTab === 'archived' ? 'bg-amber-600/20 text-amber-400 border border-amber-500/20 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Archived ({courses.filter(c => !c.active).length})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {courses.filter(c => courseFilterTab === 'active' ? c.active : !c.active).length === 0 ? (
+                    <p className="text-xs text-slate-500 italic py-8 text-center bg-background/5 rounded-2xl border border-dashed border-border/30">No courses found.</p>
+                  ) : (
+                    courses.filter(c => courseFilterTab === 'active' ? c.active : !c.active).map(course => (
+                      <div key={course.id} className="bg-background/45 border border-border p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h4 className="text-white font-extrabold text-sm">{course.title}</h4>
+                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
+                              course.active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            }`}>{course.active ? 'Published' : 'Archived'}</span>
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-1 font-medium">{course.category || 'General'} | Price: ₹{course.price}</p>
+                        </div>
+
+                        <div className="flex space-x-1.5 self-end sm:self-auto">
+                          <button
+                            onClick={() => selectCourseForSyllabus(course)}
+                            className="bg-primary/10 hover:bg-primary/25 text-primary-400 border border-primary-200/20 text-[10px] font-bold px-3.5 py-2 rounded-lg transition cursor-pointer select-none"
+                          >
+                            Manage Syllabus
+                          </button>
+                          <button
+                            onClick={() => handleStartEditCourse(course)}
+                            className="bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/20 text-[10px] font-bold px-3.5 py-2 rounded-lg transition cursor-pointer select-none"
+                          >
+                            Edit Details
+                          </button>
+                          {course.active ? (
+                            <button
+                              onClick={() => handleDeleteCourse(course.id)}
+                              className="bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 text-[10px] font-bold px-3.5 py-2 rounded-lg transition cursor-pointer select-none"
+                            >
+                              Archive
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleRestoreCourse(course.id)}
+                              className="bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3.5 py-2 rounded-lg transition cursor-pointer select-none"
+                            >
+                              Publish
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Schedule Live Class & Teaching Sessions (1/3 width) */}
+            <div className="space-y-6">
+              {/* Schedule Live Class Form */}
+              <div className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-4">
+                <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
+                  <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-primary-500 to-teal-400"></span>
+                  <span>Schedule Live Class</span>
+                </h3>
+
+                <form onSubmit={handleScheduleLive} className="space-y-4 pt-2">
                   <div className="space-y-1">
-                    <input
-                      type="url"
-                      placeholder="Document URL (https://... or Azure Blob Link)"
-                      value={resourceForm.fileUrl}
-                      onChange={(e) => setResourceForm({ ...resourceForm, fileUrl: e.target.value })}
-                      className="w-full bg-surface-900/50 text-white border border-surface-600 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-primary-600"
+                    <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Select Course</label>
+                    <select
+                      value={liveForm.courseId}
+                      onChange={(e) => setLiveForm({ ...liveForm, courseId: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 font-semibold"
                       required
-                      disabled={uploadingResource}
+                    >
+                      <option value="">-- Select Course --</option>
+                      {courses.filter(c => c.active).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Session Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Q&A and Doubts Resolving"
+                      value={liveForm.title}
+                      onChange={(e) => setLiveForm({ ...liveForm, title: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
+                      required
                     />
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-[10px] text-slate-500">Or upload file:</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Max Capacity</label>
                       <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.ppt,.pptx,.txt"
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            handleFileUpload(e.target.files[0], 'resource');
-                          }
-                        }}
-                        className="text-[10px] text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-primary-600/10 file:text-primary-400 hover:file:bg-primary-600/20 cursor-pointer"
-                        disabled={uploadingResource}
+                        type="number"
+                        value={liveForm.maxParticipants || 50}
+                        onChange={(e) => setLiveForm({ ...liveForm, maxParticipants: parseInt(e.target.value) })}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
+                        required
                       />
-                      {uploadingResource && <span className="text-[10px] text-amber-400 animate-pulse">Uploading to Azure...</span>}
+                    </div>
+                    <div className="flex items-center space-x-4 pb-2 text-[10px] text-slate-350 font-bold select-none">
+                      <label className="flex items-center space-x-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={liveForm.chatEnabled !== false}
+                          onChange={(e) => setLiveForm({ ...liveForm, chatEnabled: e.target.checked })}
+                          className="rounded border-border text-teal-600 focus:ring-0 focus:ring-offset-0 bg-background"
+                        />
+                        <span>Enable Chat</span>
+                      </label>
+                      <label className="flex items-center space-x-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={liveForm.guestAccessEnabled !== false}
+                          onChange={(e) => setLiveForm({ ...liveForm, guestAccessEnabled: e.target.checked })}
+                          className="rounded border-border text-teal-600 focus:ring-0 focus:ring-offset-0 bg-background"
+                        />
+                        <span>Allow Guests</span>
+                      </label>
                     </div>
                   </div>
-                  <button
-                    type="submit"
-                    className="bg-surface-700 border border-surface-500 text-slate-300 hover:bg-surface-600 text-xs font-bold py-1.5 rounded-lg transition self-start"
-                    disabled={uploadingResource}
-                  >
-                    Add Resource
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Start Time</label>
+                      <input
+                        type="datetime-local"
+                        value={liveForm.startTime}
+                        onChange={(e) => setLiveForm({ ...liveForm, startTime: e.target.value })}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">End Time</label>
+                      <input
+                        type="datetime-local"
+                        value={liveForm.endTime}
+                        onChange={(e) => setLiveForm({ ...liveForm, endTime: e.target.value })}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
+                    Schedule Class
                   </button>
                 </form>
               </div>
-            </section>
-          )}
-        </div>
 
-        {/* Right Column: Live Session Scheduler and Active Classes */}
-        <div className="space-y-8">
-          {/* Scheduler */}
-          <section className="bg-surface-800 border border-surface-600 rounded-2xl p-6">
-            <h3 className="text-lg font-bold text-white mb-6 flex items-center space-x-2">
-              <span className="w-2 h-4 rounded bg-emerald-500"></span>
-              <span>{editingSession ? 'Reschedule Live Class' : 'Schedule Live Class'}</span>
-            </h3>
+              {/* Teaching Sessions Card */}
+              <div className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-4">
+                <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
+                  <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-rose-500 to-red-400"></span>
+                  <span>Teaching Sessions ({liveSessions.length})</span>
+                </h3>
 
-            {courses.length === 0 ? (
-              <p className="text-slate-500 text-xs">You must create a course before scheduling a live class.</p>
-            ) : (
-              <form onSubmit={handleScheduleLive} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Select Course</label>
-                  <select
-                    name="courseId"
-                    value={liveForm.courseId}
-                    onChange={(e) => setLiveForm({ ...liveForm, courseId: e.target.value })}
-                    className="block w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none"
-                    required
-                  >
-                    {courses.filter(c => c.active).map(c => (
-                      <option key={c.id} value={c.id}>{c.title}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Session Title</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Q&A and Doubts Resolving"
-                    value={liveForm.title}
-                    onChange={(e) => setLiveForm({ ...liveForm, title: e.target.value })}
-                    className="block w-full bg-surface-900/50 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Max Capacity</label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={100}
-                      value={liveForm.maxParticipants}
-                      onChange={(e) => setLiveForm({ ...liveForm, maxParticipants: parseInt(e.target.value) })}
-                      className="block w-full bg-surface-900/50 text-white border border-surface-600 rounded-xl px-2.5 py-2 text-xs focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-4">
-                    <input
-                      type="checkbox"
-                      id="chatEnabled"
-                      checked={liveForm.chatEnabled}
-                      onChange={(e) => setLiveForm({ ...liveForm, chatEnabled: e.target.checked })}
-                      className="rounded bg-surface-900 border-surface-600 text-primary-600 focus:ring-0"
-                    />
-                    <label htmlFor="chatEnabled" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider cursor-pointer">Enable Chat</label>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-4">
-                    <input
-                      type="checkbox"
-                      id="guestAccessEnabled"
-                      checked={liveForm.guestAccessEnabled}
-                      onChange={(e) => setLiveForm({ ...liveForm, guestAccessEnabled: e.target.checked })}
-                      className="rounded bg-surface-900 border-surface-600 text-primary-600 focus:ring-0"
-                    />
-                    <label htmlFor="guestAccessEnabled" className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider cursor-pointer">Allow Guests</label>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Start Time</label>
-                    <input
-                      type="datetime-local"
-                      value={liveForm.startTime}
-                      onChange={(e) => setLiveForm({ ...liveForm, startTime: e.target.value })}
-                      className="block w-full bg-surface-900/50 text-white border border-surface-600 rounded-xl px-2 py-2 text-xs focus:outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">End Time</label>
-                    <input
-                      type="datetime-local"
-                      value={liveForm.endTime}
-                      onChange={(e) => setLiveForm({ ...liveForm, endTime: e.target.value })}
-                      className="block w-full bg-surface-900/50 text-white border border-surface-600 rounded-xl px-2 py-2 text-xs focus:outline-none"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    className="flex-grow bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
-                  >
-                    {editingSession ? 'Update Class' : 'Schedule Class'}
-                  </button>
-                  {editingSession && (
-                    <button
-                      type="button"
-                      onClick={handleCancelEditLive}
-                      className="bg-surface-700 hover:bg-surface-600 border border-surface-500 text-slate-300 text-xs font-bold py-2.5 px-4 rounded-xl transition cursor-pointer"
-                    >
-                      Cancel
-                    </button>
+                <div className="space-y-3.5 max-h-[400px] overflow-y-auto pr-1">
+                  {liveSessions.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic py-8 text-center bg-background/5 rounded-2xl border border-dashed border-border/30">
+                      No classrooms scheduled.
+                    </p>
+                  ) : (
+                    liveSessions.map(session => (
+                      <div key={session.id} className="bg-background/45 border border-border p-3.5 rounded-xl space-y-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <span className="text-[8px] bg-primary-600/10 text-primary-400 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">{session.course?.title || 'Class'}</span>
+                            <h4 className="text-white font-extrabold text-xs mt-1.5">{session.title}</h4>
+                          </div>
+                          <div className="flex space-x-2 shrink-0">
+                            {session.status === 'SCHEDULED' && (
+                              <button
+                                onClick={() => handleStartSession(session.id)}
+                                className="text-[9px] font-black text-emerald-400 hover:underline uppercase transition cursor-pointer"
+                              >
+                                Start
+                              </button>
+                            )}
+                            {session.status === 'ACTIVE' && (
+                              <>
+                                <button
+                                  onClick={() => navigate(`/live/classroom/${session.roomToken}`, {
+                                    state: {
+                                      sessionId: session.id,
+                                      micEnabled: true,
+                                      camEnabled: true,
+                                      role: 'TEACHER',
+                                      name: userName,
+                                      title: session.title,
+                                      courseName: session.course?.title || session.courseName,
+                                      teacherName: session.teacher?.name || userName
+                                    }
+                                  })}
+                                  className="text-[9px] font-black text-primary-400 hover:underline uppercase transition cursor-pointer"
+                                >
+                                  Join
+                                </button>
+                                <button
+                                  onClick={() => handleEndSession(session.id)}
+                                  className="text-[9px] font-black text-rose-450 hover:underline uppercase transition cursor-pointer"
+                                >
+                                  End
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleDeleteSession(session.id)}
+                              className="text-[9px] font-bold text-slate-500 hover:text-error transition cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-slate-400 flex items-center space-x-1">
+                          <span>📅 {new Date(session.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
-              </form>
-            )}
-          </section>
-
-          {/* Active / Scheduled Sessions */}
-          <section className="bg-surface-800 border border-surface-600 rounded-2xl p-6">
-            <h3 className="text-lg font-bold text-white mb-6 flex items-center space-x-2">
-              <span className="w-2 h-4 rounded bg-error"></span>
-              <span>Teaching Sessions ({liveSessions.length})</span>
-            </h3>
-
-            {liveSessions.length === 0 ? (
-              <p className="text-slate-500 text-xs py-2">No classrooms scheduled.</p>
-            ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {liveSessions.map(session => (
-                  <div key={session.id} className="border border-surface-600 rounded-xl p-3 bg-surface-900/30">
-                    <div className="flex justify-between items-start">
-                      <span className="font-bold text-xs text-white line-clamp-1">{session.title}</span>
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                        session.status === 'LIVE' ? 'bg-error/10 text-error' :
-                        session.status === 'ENDED' ? 'bg-slate-800 text-slate-500' : 'bg-amber-500/10 text-amber-400'
-                      }`}>
-                        {session.status}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1">Start: {new Date(session.startTime).toLocaleString()}</p>
-                    
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {session.status === 'SCHEDULED' && (
-                        <>
-                          <button
-                            onClick={() => handleStartSession(session.id)}
-                            className="bg-primary-600 hover:bg-primary-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                          >
-                            Start Live
-                          </button>
-                          <button
-                            onClick={() => handleStartEditLive(session)}
-                            className="bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/20 text-amber-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeleteSession(session.id)}
-                            className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => {
-                              const shareUrl = `${window.location.origin}/live/join/${session.roomToken}`;
-                              navigator.clipboard.writeText(shareUrl);
-                              showNotification('success', 'Join link copied to clipboard!');
-                            }}
-                            className="bg-slate-700 text-slate-300 border border-slate-500 text-[10px] font-semibold px-2.5 py-1 rounded-md transition hover:bg-slate-600 cursor-pointer"
-                          >
-                            Copy Link
-                          </button>
-                        </>
-                      )}
-                      {session.status === 'LIVE' && (
-                        <>
-                          <button
-                            onClick={() => handleEndSession(session.id)}
-                            className="bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                          >
-                            End Session
-                          </button>
-                          <button
-                            onClick={() => navigate(`/live/classroom/${session.id}`)}
-                            className="bg-primary-600 hover:bg-primary-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                          >
-                            Enter Classroom
-                          </button>
-                        </>
-                      )}
-                      {session.status === 'ENDED' && (
-                        <>
-                          <button
-                            onClick={() => handleDeleteSession(session.id)}
-                            className="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/20 text-rose-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                          >
-                            Delete Session
-                          </button>
-                          {session.recordingStatus === 'AVAILABLE' ? (
-                            <>
-                              <a
-                                href={session.recordingUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="bg-primary-600/20 border border-primary-500/30 text-primary-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition inline-block"
-                              >
-                                View Recording
-                              </a>
-                              <button
-                                onClick={() => handleDeleteRecording(session.id)}
-                                className="bg-rose-600/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold px-2.5 py-1 rounded-md transition cursor-pointer"
-                              >
-                                Remove Recording
-                              </button>
-                            </>
-                          ) : (
-                            <label className="bg-slate-700 hover:bg-slate-600 text-slate-300 border border-surface-500 text-[10px] font-semibold px-2.5 py-1 rounded-md transition cursor-pointer flex items-center">
-                              Upload Recording
-                              <input
-                                type="file"
-                                accept="video/*"
-                                className="hidden"
-                                onChange={(e) => handleUploadRecording(session.id, e.target.files[0])}
-                              />
-                            </label>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
               </div>
-            )}
-          </section>
-        </div>
-      </div>
-
-      {/* Edit Course Modal Overlay */}
-      {editingCourse && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-w-lg bg-surface-800 border border-surface-600 rounded-2xl p-6 shadow-2xl space-y-4">
-            {/* Close button */}
-            <button 
-              onClick={() => setEditingCourse(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition cursor-pointer text-sm"
-            >
-              ✕
-            </button>
-
-            <h3 className="text-lg font-bold text-white flex items-center space-x-2">
-              <span className="w-2 h-4 rounded bg-amber-500"></span>
-              <span>Edit Course Details</span>
-            </h3>
-            
-            <form onSubmit={handleUpdateCourse} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Course Title / Name</label>
-                <input
-                  type="text"
-                  value={editCourseForm.title}
-                  onChange={(e) => setEditCourseForm({ ...editCourseForm, title: e.target.value })}
-                  className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Category</label>
-                <select
-                  value={editCourseForm.category}
-                  onChange={(e) => setEditCourseForm({ ...editCourseForm, category: e.target.value })}
-                  className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
-                  required
-                >
-                  <option value="Engineering">Engineering</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Business">Business</option>
-                  <option value="Design">Design</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Description</label>
-                <textarea
-                  value={editCourseForm.description}
-                  onChange={(e) => setEditCourseForm({ ...editCourseForm, description: e.target.value })}
-                  rows="3"
-                  className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Price (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editCourseForm.price}
-                    onChange={(e) => setEditCourseForm({ ...editCourseForm, price: e.target.value })}
-                    className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Discount Price (₹, optional)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editCourseForm.discountPrice}
-                    onChange={(e) => setEditCourseForm({ ...editCourseForm, discountPrice: e.target.value })}
-                    className="w-full bg-surface-900 text-white border border-surface-600 rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex space-x-2 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingCourse(null)}
-                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-4 py-2 rounded-xl transition font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded-xl transition font-semibold cursor-pointer"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
+        </>
+      )}
+
+      {/* ══════════════════ MODALS OVERLAYS ══════════════════ */}
+      
+      {/* 1. Edit Course details Modal */}
+      {editingCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <form onSubmit={handleUpdateCourse} className="bg-card border border-border p-6 rounded-2xl w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-border/40 pb-3">
+              <h3 className="font-extrabold text-sm text-white">Modify Course Details</h3>
+              <button type="button" onClick={() => setEditingCourse(null)} className="text-slate-400" aria-label="Close edit course modal">✕</button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Course Title</label>
+              <input
+                type="text"
+                value={editCourseForm.title}
+                onChange={(e) => setEditCourseForm({ ...editCourseForm, title: e.target.value })}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Price (₹)</label>
+                <input
+                  type="number"
+                  value={editCourseForm.price}
+                  onChange={(e) => setEditCourseForm({ ...editCourseForm, price: e.target.value })}
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Discount Price (₹)</label>
+                <input
+                  type="number"
+                  value={editCourseForm.discountPrice}
+                  onChange={(e) => setEditCourseForm({ ...editCourseForm, discountPrice: e.target.value })}
+                  className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Thumbnail URL</label>
+              <input
+                type="text"
+                value={editCourseForm.thumbnailUrl}
+                onChange={(e) => setEditCourseForm({ ...editCourseForm, thumbnailUrl: e.target.value })}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            <button type="submit" className="w-full bg-primary hover:bg-primary-light text-white text-[10px] font-black uppercase py-2.5 rounded-xl transition">
+              Save Changes
+            </button>
+          </form>
         </div>
       )}
+
+      {/* 2. Add / Edit Lesson Modal Overlay */}
+      {showLessonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <form onSubmit={handleLessonSubmit} className="bg-card border border-border p-6 rounded-2xl w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-border/40 pb-3">
+              <h3 className="font-extrabold text-sm text-white">
+                {editingLessonId ? 'Modify Lecture Details' : 'Add New Lecture'}
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => { setShowLessonModal(false); setEditingLessonId(null); }} 
+                className="text-slate-400"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Lecture Title</label>
+              <input
+                type="text"
+                placeholder="Lecture Title (e.g. Installation)"
+                value={lessonForm.title}
+                onChange={(e) => setLessonForm({ ...lessonForm, title: e.target.value })}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Description</label>
+              <textarea
+                placeholder="Lecture description..."
+                value={lessonForm.description}
+                onChange={(e) => setLessonForm({ ...lessonForm, description: e.target.value })}
+                className="w-full h-16 bg-background border border-border rounded-xl px-3 py-2 text-xs text-white resize-none focus:outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Video File (Optional)</label>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => handleFileUpload(e.target.files[0], 'video')}
+                className="text-xs text-slate-400"
+              />
+              {uploadingVideo && <p className="text-[9px] text-teal-400 font-bold animate-pulse">Uploading to Azure Storage...</p>}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Video URL</label>
+              <input
+                type="text"
+                placeholder="Video Cloud Storage URL"
+                value={lessonForm.videoUrl}
+                onChange={(e) => setLessonForm({ ...lessonForm, videoUrl: e.target.value })}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
+                required
+              />
+            </div>
+
+            <button type="submit" className="w-full bg-primary hover:bg-primary-light text-white text-[10px] font-black uppercase py-2.5 rounded-xl transition">
+              {editingLessonId ? 'Update Lesson' : 'Add Lesson'}
+            </button>
+          </form>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import api from '../../api/axiosConfig';
+import { useState } from 'react';
+import api from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const CreateCourse = () => {
