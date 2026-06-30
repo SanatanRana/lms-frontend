@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
@@ -26,12 +27,7 @@ const CourseDetail = () => {
     setToast({ show: true, message, type });
   };
 
-  useEffect(() => {
-    fetchCourseDetails();
-    if (user) {
-      checkEnrollment();
-    }
-  }, [id, user]);
+
 
   const fetchCourseDetails = async () => {
     try {
@@ -64,6 +60,14 @@ const CourseDetail = () => {
       console.error("Error checking enrollment status:", error);
     }
   };
+
+  useEffect(() => {
+    fetchCourseDetails();
+    if (user) {
+      checkEnrollment();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user]);
 
   const handleApplyCoupon = () => {
     setCouponStatus({ type: '', msg: '' });

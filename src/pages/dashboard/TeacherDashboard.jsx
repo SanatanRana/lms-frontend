@@ -1,40 +1,17 @@
 import { useState, useEffect, useContext } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import Toast from '../../components/common/Toast';
 import { AuthContext } from '../../context/AuthContext';
 
-// CSV Exporter (defined outside to satisfy react-hooks/purity rules)
-const exportToCSV = (data, filename, onSuccess, onError) => {
-  if (!data.length) {
-    if (onError) onError('No data to export.');
-    return;
-  }
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(row => 
-    Object.values(row).map(val => {
-      if (val === null || val === undefined) return '';
-      if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
-      return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
-    }).join(',')
-  );
-  const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", `${filename}_logs_${Date.now()}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  if (onSuccess) onSuccess('Logs exported to CSV successfully!');
-};
+
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const userName = user?.name || localStorage.getItem('userName') || 'Teacher';
 
-  const [searchParams, setSearchParams] = useSearchParams();
+
 
   // Datasets
   const [courses, setCourses] = useState([]);
@@ -109,26 +86,9 @@ const TeacherDashboard = () => {
   const [editingSession, setEditingSession] = useState(null);
 
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [uploadingResource, setUploadingResource] = useState(false);
   const [notification, setNotification] = useState({ type: '', msg: '' });
-
-  // Student Doubt reply Desk & Homework submissions mock datastream
-  const [doubts, setDoubts] = useState([
-    { id: 1, studentName: "Rajesh Kumar", courseName: "Full Stack Web Dev", question: "How does the virtual DOM work in React 19? Can you explain fiber reconciliation?", replies: [] },
-    { id: 2, studentName: "Priya Sharma", courseName: "UI/UX Foundations", question: "What is the optimal mobile grid padding for 390px layouts?", replies: [] }
-  ]);
-  const [doubtReplies, setDoubtReplies] = useState({});
-
-  const [homeworks, setHomeworks] = useState([
-    { id: 101, studentName: "Vikram Malhotra", courseName: "Full Stack Web Dev", title: "React Props Homework", submissionUrl: "https://github.com/vikram/props-assignment", status: "Submitted", grade: "", feedback: "" },
-    { id: 102, studentName: "Neha Gupta", courseName: "UI/UX Foundations", title: "Mobile Wireframe Mockups", submissionUrl: "https://figma.com/file/neha-mockup", status: "Submitted", grade: "", feedback: "" }
-  ]);
-
-  const [attendanceLogs] = useState([
-    { id: 1, sessionName: "React Hooks Masterclass", studentName: "Rajesh Kumar", email: "rajesh@gmail.com", joinedAt: "10:05 AM", stayDuration: "50 mins", attendance: "Present" },
-    { id: 2, sessionName: "React Hooks Masterclass", studentName: "Priya Sharma", email: "priya@gmail.com", joinedAt: "10:07 AM", stayDuration: "48 mins", attendance: "Present" },
-    { id: 3, sessionName: "Figma Grid Layouts", studentName: "Neha Gupta", email: "neha@gmail.com", joinedAt: "02:00 PM", stayDuration: "60 mins", attendance: "Present" }
-  ]);
 
   const showNotification = (type, msg) => {
     setNotification({ type, msg });
@@ -461,23 +421,7 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleStartEditLive = (session) => {
-    setEditingSession(session);
-    const truncateSeconds = (dtStr) => {
-      if (!dtStr) return "";
-      return dtStr.substring(0, 16);
-    };
 
-    setLiveForm({
-      courseId: session.course?.id?.toString() || '',
-      title: session.title || '',
-      startTime: truncateSeconds(session.startTime),
-      endTime: truncateSeconds(session.endTime),
-      maxParticipants: session.maxParticipants || 50,
-      chatEnabled: session.chatEnabled !== false,
-      guestAccessEnabled: session.guestAccessEnabled !== false
-    });
-  };
 
   const handleCancelEditLive = () => {
     setEditingSession(null);

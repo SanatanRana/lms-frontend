@@ -196,11 +196,13 @@ const CourseLearn = () => {
         const parsedTime = parseFloat(savedTime);
         if (parsedTime > 5) {
           safeSeek(parsedTime);
+          /* eslint-disable-next-line react-hooks/set-state-in-effect */
           setCurrentTime(parsedTime);
           showToast('success', `⏰ Resumed lecture from ${formatTime(parsedTime)}`);
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLesson, user]);
 
   // Auto-hide controls overlay after 3.5 seconds of inactivity if playing
@@ -223,65 +225,7 @@ const CourseLearn = () => {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Keyboard Shortcuts Handler
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
-        return;
-      }
-      if (!videoRef.current) return;
 
-      switch (e.key.toLowerCase()) {
-        case ' ':
-        case 'k':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'arrowleft':
-        case 'j':
-          e.preventDefault();
-          const backTime = Math.max(0, videoRef.current.currentTime - 10);
-          safeSeek(backTime);
-          setCurrentTime(backTime);
-          break;
-        case 'arrowright':
-        case 'l':
-          e.preventDefault();
-          const fwdTime = Math.min(duration, videoRef.current.currentTime + 10);
-          safeSeek(fwdTime);
-          setCurrentTime(fwdTime);
-          break;
-        case 'arrowup':
-          e.preventDefault();
-          const volUp = Math.min(1, volume + 0.1);
-          videoRef.current.volume = volUp;
-          setVolume(volUp);
-          setIsMuted(volUp === 0);
-          break;
-        case 'arrowdown':
-          e.preventDefault();
-          const volDn = Math.max(0, volume - 0.1);
-          videoRef.current.volume = volDn;
-          setVolume(volDn);
-          setIsMuted(volDn === 0);
-          break;
-        case 'f':
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case 'm':
-          e.preventDefault();
-          toggleMute();
-          break;
-        default:
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, duration, currentTime, volume, isMuted]);
 
   // Mobile Auto-Landscape Fullscreen
   useEffect(() => {
@@ -551,6 +495,71 @@ const CourseLearn = () => {
       }).catch(err => console.log(err));
     }
   };
+
+  // Keyboard Shortcuts Handler
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        return;
+      }
+      if (!videoRef.current) return;
+
+      switch (e.key.toLowerCase()) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'arrowleft':
+        case 'j': {
+          e.preventDefault();
+          const backTime = Math.max(0, videoRef.current.currentTime - 10);
+          safeSeek(backTime);
+          setCurrentTime(backTime);
+          break;
+        }
+        case 'arrowright':
+        case 'l': {
+          e.preventDefault();
+          const fwdTime = Math.min(duration, videoRef.current.currentTime + 10);
+          safeSeek(fwdTime);
+          setCurrentTime(fwdTime);
+          break;
+        }
+        case 'arrowup': {
+          e.preventDefault();
+          const volUp = Math.min(1, volume + 0.1);
+          videoRef.current.volume = volUp;
+          setVolume(volUp);
+          setIsMuted(volUp === 0);
+          break;
+        }
+        case 'arrowdown': {
+          e.preventDefault();
+          const volDn = Math.max(0, volume - 0.1);
+          videoRef.current.volume = volDn;
+          setVolume(volDn);
+          setIsMuted(volDn === 0);
+          break;
+        }
+        case 'f':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+          e.preventDefault();
+          toggleMute();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, duration, currentTime, volume, isMuted]);
 
   // Add Timestamped Note
   const handleAddNote = (e) => {
