@@ -64,6 +64,14 @@ const CourseDetail = () => {
     }
   };
 
+  const handleLessonClick = (les) => {
+    if (isEnrolled || user?.role === 'ADMIN') {
+      navigate(`/course/${id}/learn`, { state: { initialLessonId: les.id } });
+    } else {
+      showToast('error', 'Please enroll in this course to watch the lectures!');
+    }
+  };
+
   const handleEnrollOrBuy = async () => {
     if (!user) {
       navigate('/login');
@@ -139,7 +147,13 @@ const CourseDetail = () => {
   const finalPrice = discountPrice !== null ? discountPrice : (course.discountPrice || course.price);
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
+    <div className="max-w-7xl mx-auto px-4 py-6 animate-fade-in pb-32 relative">
+      
+      {/* Toast popup */}
+      {toast.show && (
+        <Toast type={toast.type} message={toast.message} onClose={() => setToast({ show: false, message: '', type: 'success' })} />
+      )}
+
       {/* Back button */}
       <Link to="/" className="inline-flex items-center space-x-2 text-sm text-slate-400 hover:text-white mb-8 transition">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,31 +177,87 @@ const CourseDetail = () => {
             </p>
           </div>
 
-          {/* Video Preview */}
-          <div className="border border-surface-600 bg-surface-800 rounded-2xl p-5 overflow-hidden">
-            <h3 className="text-white font-extrabold text-lg mb-4 flex items-center space-x-2">
-              <span className="w-2 h-4 rounded bg-primary-500"></span>
-              <span>Course Introduction Video</span>
-            </h3>
-            {course.introVideoUrl ? (
-              <div className="aspect-video bg-black rounded-xl overflow-hidden relative border border-surface-600">
-                <iframe 
-                  className="w-full h-full"
-                  src={course.introVideoUrl.replace("watch?v=", "embed/")}
-                  title="Course Introduction"
-                  allowFullScreen
-                ></iframe>
+          {/* Curriculum Section */}
+          <section className="space-y-4">
+            <div className="flex justify-between items-baseline">
+              <h3 className="text-base font-extrabold text-white">Course Curriculum</h3>
+              <span className="text-[10px] text-slate-400 font-bold">{totalLessons} Video Lectures</span>
+            </div>
+
+            <div className="space-y-2.5">
+              {sections.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-4">No sections added to curriculum outline yet.</p>
+              ) : (
+                sections.map((sec, sIdx) => {
+                  const isExpanded = expandedSection === sIdx;
+                  return (
+                    <div 
+                      key={sec.id}
+                      className="bg-card border border-border rounded-2xl overflow-hidden transition"
+                    >
+                      <button
+                        onClick={() => setExpandedSection(isExpanded ? null : sIdx)}
+                        className="w-full text-left p-4 flex justify-between items-center bg-background/40 hover:bg-background/80 transition"
+                      >
+                        <div className="min-w-0 pr-4">
+                          <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest block mb-0.5">
+                            Chapter {sIdx + 1}
+                          </span>
+                          <h4 className="text-white font-bold text-sm truncate">{sec.title}</h4>
+                        </div>
+                        <svg className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="border-t border-border p-4 bg-card-light/10 divide-y divide-border/40">
+                          {(sec.lessons || []).length === 0 ? (
+                            <p className="text-xs text-slate-500 italic py-2">No video lectures in this chapter.</p>
+                          ) : (
+                            (sec.lessons || []).map((les, lIdx) => (
+                              <div 
+                                key={les.id} 
+                                onClick={() => handleLessonClick(les)}
+                                className="py-2.5 px-3 first:pt-0 last:pb-0 flex items-center justify-between text-xs text-slate-400 hover:bg-slate-700/20 rounded-xl transition cursor-pointer group"
+                              >
+                                <div className="flex items-center space-x-2.5 min-w-0 pr-4">
+                                  <span className="text-slate-600 group-hover:text-teal-400 transition">📹</span>
+                                  <span className="truncate font-medium text-slate-300 group-hover:text-white transition">
+                                    {sIdx + 1}.{lIdx + 1} {les.title}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 group-hover:text-teal-400 group-hover:bg-teal-500/10 group-hover:border-teal-500/20 shrink-0 font-bold bg-background/60 px-2.5 py-1 rounded-lg border border-border transition">
+                                  Play Lecture ▶
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* Instructor Bio Panel */}
+          <section className="bg-card border border-border p-6 rounded-3xl space-y-4">
+            <h3 className="text-base font-extrabold text-white">Your Instructor</h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-indigo-500 flex items-center justify-center font-black text-white text-base shadow-lg shrink-0">
+                {course.teacherName ? course.teacherName.substring(0, 2).toUpperCase() : 'TR'}
               </div>
-            ) : (
-              <div className="aspect-video bg-surface-900 rounded-xl flex flex-col items-center justify-center border border-surface-600/50 text-slate-500">
-                <svg className="w-12 h-12 text-slate-700 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm">No preview video available.</span>
+              <div className="min-w-0">
+                <h4 className="text-white font-extrabold text-sm">{course.teacherName || 'Professional Educator'}</h4>
+                <p className="text-[10px] text-primary-400 font-bold uppercase tracking-wider">AuraLMS Certified Expert</p>
+                <p className="text-xs text-text-muted mt-2 leading-relaxed">
+                  Passionate industry professional dedicated to teaching students global standards. 10+ years of software design and teaching experience.
+                </p>
               </div>
-            )}
-          </div>
+            </div>
+          </section>
         </div>
 
         {/* Purchase Card */}
@@ -291,6 +361,70 @@ const CourseDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* ══════════════════ RELATED COURSES ══════════════════ */}
+      {relatedCourses.length > 0 && (
+        <section className="space-y-6 pt-12 border-t border-border/60 mt-12">
+          <div>
+            <h3 className="text-base font-extrabold text-white">Related Courses you may like</h3>
+            <p className="text-xs text-text-muted mt-0.5">Explore matching topics in the same category.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            {relatedCourses.map(rel => (
+              <Link 
+                to={`/course/${rel.id}`}
+                key={rel.id}
+                className="bg-card border border-border p-4.5 rounded-2xl shadow flex items-center space-x-3.5 hover:border-slate-700/50 transition card-hover"
+              >
+                <img 
+                  src={rel.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+                  alt={rel.title}
+                  className="w-14 h-14 object-cover rounded-xl border border-border shrink-0"
+                />
+                <div className="min-w-0">
+                  <h4 className="text-white font-bold text-xs truncate">{rel.title}</h4>
+                  <p className="text-slate-500 text-[10px] truncate">{rel.category || 'General'}</p>
+                  <span className="text-[10px] font-black text-white block mt-1">
+                    {(rel.discountPrice || rel.price) === 0 ? 'Free' : `₹${rel.discountPrice || rel.price}`}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface-800 border-t border-border p-4.5 z-30 flex items-center justify-between shadow-2xl">
+        <div className="space-y-0.5">
+          <span className="text-[9px] text-slate-500 uppercase tracking-wider font-extrabold block">Enrollment Price</span>
+          <span className="text-base font-black text-white">₹{finalPrice}</span>
+        </div>
+        <div className="w-1/2">
+          {isEnrolled || user?.role === 'ADMIN' ? (
+            <Link
+              to={`/course/${id}/learn`}
+              className="w-full block text-center bg-gradient-to-r from-teal-500 to-primary-600 hover:from-teal-400 hover:to-primary-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-lg transition select-none cursor-pointer"
+            >
+              Start Learning 🚀
+            </Link>
+          ) : (
+            <button
+              onClick={handleEnrollOrBuy}
+              disabled={purchasing}
+              className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-black py-2.5 px-4 rounded-xl text-xs shadow-lg transition flex items-center justify-center space-x-1 cursor-pointer"
+            >
+              {purchasing ? (
+                <span className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></span>
+              ) : (
+                <span>{finalPrice === 0 ? 'Enroll Free' : 'Buy Now'}</span>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 };

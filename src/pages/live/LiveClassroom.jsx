@@ -1,14 +1,17 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import api from '../../api/axiosConfig';
+import api from '../../services/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useWebRTC } from '../../hooks/useWebRTC';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export const LiveClassroom = () => {
-  const { sessionId } = useParams();
+  const { roomToken } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Resolve sessionId securely from state or API fallback
+  const [sessionId, setSessionId] = useState(location.state?.sessionId || null);
   const [loading, setLoading] = useState(true);
   const [sessionDetails, setSessionDetails] = useState(null);
 
@@ -68,6 +71,15 @@ export const LiveClassroom = () => {
 
   const wsUrl = getWebSocketUrl();
 
+  // Ref to hold WebRTC handler functions to avoid hook dependency loop
+  const rtcHandlersRef = useRef({
+    initiateCall: null,
+    handleOffer: null,
+    handleAnswer: null,
+    handleIceCandidate: null,
+    removePeer: null
+  });
+
   // ── 1. WebSocket signaling event dispatcher ──
   const onWebSocketMessage = useCallback((message) => {
     const { type, payload } = message;
@@ -77,35 +89,51 @@ export const LiveClassroom = () => {
         console.log('[Classroom] Room joined successfully. My WS ID:', payload.yourSessionId);
         setParticipants(payload.participants || []);
         setChatMessages(payload.chatHistory || []);
+        if (isTeacher && rtcHandlersRef.current.initiateCall) {
+          payload.participants?.forEach(p => {
+            if (p.sessionId !== payload.yourSessionId) {
+              console.log('[Classroom] Initiating call to existing participant:', p.name);
+              rtcHandlersRef.current.initiateCall(p.sessionId, p.name, p.role);
+            }
+          });
+        }
         break;
 
       case 'PARTICIPANT_JOINED':
         console.log('[Classroom] Participant joined:', payload.name);
         setParticipants(payload.participants || []);
         // If I am the Teacher, initiate call with the new peer
-        if (isTeacher) {
-          initiateCall(payload.sessionId, payload.name, payload.role);
+        if (isTeacher && rtcHandlersRef.current.initiateCall) {
+          rtcHandlersRef.current.initiateCall(payload.sessionId, payload.name, payload.role);
         }
         break;
 
       case 'PARTICIPANT_LEFT':
         console.log('[Classroom] Participant left:', payload.sessionId);
         setParticipants(payload.participants || []);
-        removePeer(payload.sessionId);
+        if (rtcHandlersRef.current.removePeer) {
+          rtcHandlersRef.current.removePeer(payload.sessionId);
+        }
         break;
 
       case 'OFFER':
         // Student receives offer from teacher
-        handleOffer(payload.senderId, payload.sdp, participantsRef.current);
+        if (rtcHandlersRef.current.handleOffer) {
+          rtcHandlersRef.current.handleOffer(payload.senderId, payload.sdp, participantsRef.current);
+        }
         break;
 
       case 'ANSWER':
         // Teacher receives answer from student
-        handleAnswer(payload.senderId, payload.sdp);
+        if (rtcHandlersRef.current.handleAnswer) {
+          rtcHandlersRef.current.handleAnswer(payload.senderId, payload.sdp);
+        }
         break;
 
       case 'ICE_CANDIDATE':
-        handleIceCandidate(payload.senderId, payload);
+        if (rtcHandlersRef.current.handleIceCandidate) {
+          rtcHandlersRef.current.handleIceCandidate(payload.senderId, payload);
+        }
         break;
 
       case 'CHAT_MESSAGE':
@@ -143,8 +171,18 @@ export const LiveClassroom = () => {
     }
   }, [isTeacher]);
 
+  const onConnectRef = useRef(null);
+
   // Connect to WS signaling
-  const { connect, disconnect, send: wsSend } = useWebSocket(wsUrl, onWebSocketMessage);
+  const { connect, disconnect, send: wsSend } = useWebSocket(
+    wsUrl,
+    onWebSocketMessage,
+    useCallback(() => {
+      if (onConnectRef.current) {
+        onConnectRef.current();
+      }
+    }, [])
+  );
 
   // Initialize WebRTC logic
   const {
@@ -168,58 +206,87 @@ export const LiveClassroom = () => {
     cleanUp: rtcCleanUp
   } = useWebRTC(sessionId, null, myRole, wsSend);
 
+  // Sync WebRTC functions to the ref so onWebSocketMessage can access them
+  useEffect(() => {
+    rtcHandlersRef.current = {
+      initiateCall,
+      handleOffer,
+      handleAnswer,
+      handleIceCandidate,
+      removePeer
+    };
+  }, [initiateCall, handleOffer, handleAnswer, handleIceCandidate, removePeer]);
+
+  // Ref to track session ID without re-triggering effects
+  const sessionIdRef = useRef(sessionId);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  // Keep the JOIN_ROOM payload sender callback updated with latest state
+  useEffect(() => {
+    onConnectRef.current = () => {
+      if (!sessionIdRef.current) {
+        console.log('[Classroom] sessionId is not resolved yet. Postponing JOIN_ROOM...');
+        return;
+      }
+      console.log('[Classroom] WebSocket connection opened/reconnected. Sending JOIN_ROOM for session:', sessionIdRef.current);
+      wsSend('JOIN_ROOM', sessionIdRef.current, {
+        name: myName,
+        role: myRole,
+        userId: localStorage.getItem('userId') ? parseInt(localStorage.getItem('userId')) : null,
+        audioMuted: !joinParams.micEnabled,
+        videoMuted: !joinParams.camEnabled
+      });
+    };
+  }, [myName, myRole, wsSend, joinParams.micEnabled, joinParams.camEnabled]);
+
   // ── 2. Initialize Media Devices & Establish Socket ──
   useEffect(() => {
     const startClassroom = async () => {
       try {
-        // If details are passed in state, use them directly
-        if (joinParams.title && joinParams.courseName) {
+        let activeSessionId = sessionIdRef.current;
+        
+        // Fetch session info by roomToken if we don't have the sessionId
+        if (!activeSessionId) {
+          console.log('[Classroom] Resolving sessionId from roomToken:', roomToken);
+          const resp = await api.get(`/live/room/${roomToken}`);
+          const data = resp.data.data;
+          activeSessionId = data.sessionId;
+          setSessionId(activeSessionId);
+          setSessionDetails(data);
+        } else if (joinParams.title && joinParams.courseName) {
           setSessionDetails({
             title: joinParams.title,
             courseName: joinParams.courseName,
             teacherName: joinParams.teacherName
           });
         } else {
-          // Fetch full session details
-          const resp = await api.get(`/live/room/token-bypass-fallback/${sessionId}`).catch(async () => {
-            // If fallback fails, query sessions endpoints
+          // Fetch full session details using fallback
+          const resp = await api.get(`/live/room/token-bypass-fallback/${activeSessionId}`).catch(async () => {
             const fallback = await api.get(`/live/my-sessions`);
-            const found = fallback.data.data?.find(s => s.id.toString() === sessionId);
-            if (!found) throw new Error('Live classroom session not found');
+            const found = fallback.data.data?.find(s => s.id.toString() === activeSessionId.toString());
+            if (!found) throw new Error('Live classroom session not found or access is restricted.');
             return { data: { data: { title: found.title, courseName: found.course?.title, teacherName: found.teacher?.name } } };
           });
           setSessionDetails(resp.data.data);
         }
 
-        // Initialize user mic & camera stream
-        const stream = await initLocalStream();
-        if (stream) {
-          // Apply pre-join selected preferences
-          if (joinParams.micEnabled) {
-            stream.getAudioTracks().forEach(t => t.enabled = true);
-          }
-          if (joinParams.camEnabled) {
-            stream.getVideoTracks().forEach(t => t.enabled = true);
-          }
+        // Initialize user mic & camera stream with pre-join choices
+        const stream = await initLocalStream(joinParams.micEnabled, joinParams.camEnabled);
+        if (!stream && isTeacher) {
+          throw new Error('Camera or microphone access is required for instructors to start the live class.');
         }
 
         // Establish WS Connection
         connect();
 
-        // Join room payload
-        setTimeout(() => {
-          wsSend('JOIN_ROOM', sessionId, {
-            name: myName,
-            role: myRole,
-            userId: localStorage.getItem('userId') ? parseInt(localStorage.getItem('userId')) : null
-          });
-        }, 800);
-
         setLoading(false);
       } catch (err) {
         console.error(err);
-        alert('Could not join classroom. Please check your camera settings.');
-        navigate('/');
+        const errMsg = err.response?.data?.message || err.message || 'Could not join classroom. Please check your camera settings.';
+        alert(errMsg);
+        navigate('/dashboard');
       }
     };
 
@@ -229,7 +296,7 @@ export const LiveClassroom = () => {
       disconnect();
       rtcCleanUp();
     };
-  }, [sessionId]);
+  }, [roomToken]);
 
   // Bind local video stream once ready
   useEffect(() => {
@@ -336,16 +403,47 @@ export const LiveClassroom = () => {
     return <LoadingSpinner text="Connecting to interactive live room..." />;
   }
 
-  // Find if teacher is sharing screen
-  const screenSharingPeer = Object.entries(remoteStreams).find(
-    ([id, peer]) => participants.find(p => p.sessionId === id)?.isSharingScreen
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return parts[0].substring(0, 2).toUpperCase();
+  };
+
+  const getGradientBg = (name) => {
+    if (!name) return 'from-slate-700 to-slate-800';
+    const gradients = [
+      'from-blue-600 to-indigo-600',
+      'from-purple-600 to-pink-600',
+      'from-emerald-600 to-teal-600',
+      'from-rose-600 to-orange-600',
+      'from-cyan-600 to-blue-600',
+      'from-violet-600 to-purple-600'
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % gradients.length;
+    return gradients[index];
+  };
+
+  // Find if teacher stream exists in remoteStreams
+  const teacherStreamObj = Object.entries(remoteStreams).find(
+    ([, peer]) => peer.role === 'TEACHER' || peer.role === 'ADMIN'
   );
+
+  const isTeacherMuted = teacherStreamObj 
+    ? (participants.find(p => p.sessionId === teacherStreamObj[0])?.videoMuted ?? true)
+    : true;
 
   return (
     <div className="h-screen flex flex-col bg-surface-900 text-white overflow-hidden">
       
       {/* ── Header Toolbar ── */}
-      <header className="px-6 py-4 bg-surface-800 border-b border-white/5 flex items-center justify-between">
+      <header className="px-6 py-4 bg-surface-800 border-b border-white/5 flex items-center justify-between landscape:max-lg:hidden">
         <div className="flex items-center gap-3">
           <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
           <h2 className="text-lg font-bold tracking-tight">{sessionDetails?.title || 'Live Classroom'}</h2>
@@ -370,101 +468,173 @@ export const LiveClassroom = () => {
       </header>
 
       {/* ── Main Panel Layout ── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         
-        {/* Left Side: Active Streams Grid */}
-        <div className="flex-grow p-6 flex flex-col justify-center items-center relative bg-surface-950/60 overflow-y-auto">
+        {/* Left Side: Focus Mode Live Room View */}
+        <div className="flex-grow p-4 md:p-6 flex flex-col gap-4 bg-surface-950/60 overflow-hidden relative landscape:max-lg:p-0">
           
-          <div className="w-full h-full max-w-6xl max-h-[80vh] grid grid-cols-1 md:grid-cols-2 gap-4">
-            
-            {/* Teacher Stream (or local stream if I am teacher) */}
+          {/* Main Presenter Stage */}
+          <div className="flex-1 min-h-0 w-full flex items-center justify-center relative">
             {isTeacher ? (
-              <div className="relative rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center group shadow-xl">
+              <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover transform -scale-x-100 ${!isVideoMuted ? 'opacity-100' : 'opacity-0'}`}
+                  className={`w-full h-full object-cover transform -scale-x-100 transition-opacity duration-300 ${!isVideoMuted ? 'opacity-100' : 'opacity-0'}`}
                 />
                 {isVideoMuted && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
-                    <span className="text-3xl p-4 rounded-full bg-slate-950 border border-white/5 mb-2">👤</span>
-                    <span className="text-sm font-semibold">{myName} (You)</span>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${getGradientBg(myName)} flex flex-col items-center justify-center`}>
+                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-black/30 border border-white/20 flex items-center justify-center text-3xl md:text-4xl font-extrabold text-white shadow-xl animate-pulse">
+                      {getInitials(myName)}
+                    </div>
+                    <span className="text-sm font-bold mt-4 text-slate-200 tracking-wider">Instructor: {myName} (You)</span>
+                    <span className="text-xs text-slate-400 mt-1 bg-black/40 px-2.5 py-0.5 rounded-full border border-white/5">Video Muted</span>
                   </div>
                 )}
-                <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg text-xs border border-white/5">
-                  ⭐ Instructor (You)
+                <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs border border-white/10 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  ⭐ Instructor: {myName} (You)
                 </div>
               </div>
             ) : (
-              // Student viewing Teacher stream
-              Object.entries(remoteStreams)
-                .filter(([id, peer]) => peer.role === 'TEACHER')
+              teacherStreamObj ? (
+                <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
+                  <video
+                    autoPlay
+                    playsInline
+                    ref={(el) => { if (el) el.srcObject = teacherStreamObj[1].stream; }}
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${!isTeacherMuted ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                  {isTeacherMuted && (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${getGradientBg(teacherStreamObj[1].name)} flex flex-col items-center justify-center`}>
+                      <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-black/30 border border-white/20 flex items-center justify-center text-3xl md:text-4xl font-extrabold text-white shadow-xl animate-pulse">
+                        {getInitials(teacherStreamObj[1].name)}
+                      </div>
+                      <span className="text-sm font-bold mt-4 text-slate-200 tracking-wider">Instructor: {teacherStreamObj[1].name}</span>
+                      <span className="text-xs text-slate-400 mt-1 bg-black/40 px-2.5 py-0.5 rounded-full border border-white/5">Video Muted</span>
+                    </div>
+                  )}
+                  <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl text-xs border border-white/10 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    ⭐ Instructor: {teacherStreamObj[1].name}
+                  </div>
+                </div>
+              ) : (
+                <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex flex-col items-center justify-center text-center p-8 shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
+                  <div className="w-20 h-20 rounded-full bg-slate-950 border border-white/5 flex items-center justify-center text-3xl animate-bounce mb-4">
+                    ⏳
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-200">Waiting for Instructor...</h3>
+                  <p className="text-xs text-slate-400 max-w-xs mt-2 leading-relaxed">
+                    The host has not started sharing their video stream yet. Please stay in the room.
+                  </p>
+                </div>
+              )
+            )}
+          </div>
+
+          {/* Student Thumbnail Strip (Horizontal Gallery) */}
+          <div className="w-full shrink-0 border-t border-white/5 pt-4 bg-slate-950/20 px-2 rounded-2xl landscape:max-lg:hidden">
+            <h4 className="text-slate-400 text-[10px] font-extrabold tracking-widest uppercase mb-2 px-2 flex items-center gap-1.5">
+              <span>👥 Student Gallery</span>
+              <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                {Object.entries(remoteStreams).filter(([, p]) => p.role !== 'TEACHER').length + (!isTeacher ? 1 : 0)}
+              </span>
+            </h4>
+            
+            <div className="w-full flex items-center gap-4 overflow-x-auto py-2 px-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+              {/* Local student preview ("You") */}
+              {!isTeacher && localStream && (
+                <div className="relative w-44 aspect-video rounded-xl bg-slate-900 border border-white/10 overflow-hidden flex items-center justify-center shrink-0 shadow-lg group hover:border-primary-500/50 transition duration-300">
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`w-full h-full object-cover transform -scale-x-100 transition-opacity duration-300 ${!isVideoMuted ? 'opacity-100' : 'opacity-0'}`}
+                  />
+                  {isVideoMuted && (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${getGradientBg(myName)} flex items-center justify-center`}>
+                      <div className="w-10 h-10 rounded-full bg-black/20 border border-white/10 flex items-center justify-center text-sm font-bold text-white shadow">
+                        {getInitials(myName)}
+                      </div>
+                    </div>
+                  )}
+                  <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] border border-white/5 max-w-[80%] truncate font-semibold">
+                    👤 You
+                  </div>
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <span className="bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] border border-white/5">
+                      {isAudioMuted ? '🔇' : '🎤'}
+                    </span>
+                    <span className="bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] border border-white/5">
+                      {isVideoMuted ? '🚫' : '📹'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Remote students list */}
+              {Object.entries(remoteStreams)
+                .filter(([, peer]) => peer.role !== 'TEACHER' && peer.role !== 'ADMIN')
                 .map(([id, peer]) => {
-                  const isPeerMuted = participants.find(p => p.sessionId === id)?.videoMuted;
+                  const participantInfo = participants.find(p => p.sessionId === id);
+                  const isPeerVideoMuted = participantInfo ? (participantInfo.videoMuted ?? true) : true;
+                  const isPeerAudioMuted = participantInfo ? (participantInfo.audioMuted ?? true) : true;
+
                   return (
-                    <div key={id} className="relative rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center group shadow-xl">
+                    <div key={id} className="relative w-44 aspect-video rounded-xl bg-slate-900 border border-white/10 overflow-hidden flex items-center justify-center shrink-0 shadow-lg group hover:border-primary-500/50 transition duration-300">
                       <video
                         autoPlay
                         playsInline
                         ref={(el) => { if (el) el.srcObject = peer.stream; }}
-                        className={`w-full h-full object-cover ${!isPeerMuted ? 'opacity-100' : 'opacity-0'}`}
+                        className={`w-full h-full object-cover transform -scale-x-100 transition-opacity duration-300 ${!isPeerVideoMuted ? 'opacity-100' : 'opacity-0'}`}
                       />
-                      {isPeerMuted && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
-                          <span className="text-3xl p-4 rounded-full bg-slate-950 border border-white/5 mb-2">👤</span>
+                      {isPeerVideoMuted && (
+                        <div className={`absolute inset-0 bg-gradient-to-br ${getGradientBg(peer.name)} flex items-center justify-center`}>
+                          <div className="w-10 h-10 rounded-full bg-black/20 border border-white/10 flex items-center justify-center text-sm font-bold text-white shadow">
+                            {getInitials(peer.name)}
+                          </div>
                         </div>
                       )}
-                      <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg text-xs border border-white/5">
-                        ⭐ Instructor: {peer.name}
+                      <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-md px-2 py-0.5 rounded text-[10px] border border-white/5 max-w-[80%] truncate">
+                        👤 {peer.name}
+                      </div>
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <span className="bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] border border-white/5">
+                          {isPeerAudioMuted ? '🔇' : '🎤'}
+                        </span>
+                        <span className="bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] border border-white/5">
+                          {isPeerVideoMuted ? '🚫' : '📹'}
+                        </span>
                       </div>
                     </div>
                   );
-                })
-            )}
+                })}
 
-            {/* Student Streams List (Mesh/SFU style grid) */}
-            {Object.entries(remoteStreams)
-              .filter(([id, peer]) => peer.role !== 'TEACHER')
-              .map(([id, peer]) => {
-                const isPeerMuted = participants.find(p => p.sessionId === id)?.videoMuted;
-                return (
-                  <div key={id} className="relative rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center group shadow-xl">
-                    <video
-                      autoPlay
-                      playsInline
-                      ref={(el) => { if (el) el.srcObject = peer.stream; }}
-                      className={`w-full h-full object-cover transform -scale-x-100 ${!isPeerMuted ? 'opacity-100' : 'opacity-0'}`}
-                    />
-                    {isPeerMuted && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
-                        <span className="text-3xl p-4 rounded-full bg-slate-950 border border-white/5 mb-2">👤</span>
-                      </div>
-                    )}
-                    <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg text-xs border border-white/5">
-                      👤 {peer.name} ({peer.role})
-                    </div>
-                  </div>
-                );
-              })}
-
-            {/* Empty Room State fallback */}
-            {Object.keys(remoteStreams).length === 0 && !isTeacher && (
-              <div className="col-span-2 flex flex-col items-center justify-center text-center p-8 bg-slate-900/40 rounded-2xl border border-white/5">
-                <span className="text-4xl animate-bounce mb-3">⏳</span>
-                <h3 className="text-lg font-bold text-slate-300">Waiting for instructor...</h3>
-                <p className="text-xs text-slate-500 max-w-xs mt-1">
-                  The host has not started sharing their video stream. Make sure to stay in the room.
-                </p>
-              </div>
-            )}
+              {/* Fallback if no students show up */}
+              {Object.entries(remoteStreams).filter(([, p]) => p.role !== 'TEACHER' && p.role !== 'ADMIN').length === 0 && isTeacher && (
+                <div className="w-full flex justify-center items-center py-4 text-xs text-slate-500 italic bg-slate-900/10 rounded-xl border border-dashed border-white/5">
+                  No students in classroom yet. Share the invite link with your class!
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
+        {/* Mobile Backdrop for Sidebar Drawers */}
+        {(showChat || showPeople) && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity"
+            onClick={() => { setShowChat(false); setShowPeople(false); }}
+          />
+        )}
+
         {/* Right Side: Chat Panel */}
         {showChat && (
-          <aside className="w-80 bg-surface-800 border-l border-white/5 flex flex-col overflow-hidden animate-scale-in">
+          <aside className="w-full max-w-xs md:max-w-none md:w-80 bg-surface-800 border-l border-white/5 flex flex-col overflow-hidden animate-scale-in fixed md:static inset-y-0 right-0 z-50 shadow-2xl md:shadow-none">
             <div className="px-5 py-4 border-b border-white/5 flex justify-between items-center bg-surface-900/40">
               <span className="text-sm font-extrabold uppercase tracking-widest text-primary-400">Classroom Chat</span>
               <button onClick={() => setShowChat(false)} className="text-slate-500 hover:text-white transition">✕</button>
@@ -514,7 +684,7 @@ export const LiveClassroom = () => {
 
         {/* Right Side: Participant List Panel */}
         {showPeople && (
-          <aside className="w-80 bg-surface-800 border-l border-white/5 flex flex-col overflow-hidden animate-scale-in">
+          <aside className="w-full max-w-xs md:max-w-none md:w-80 bg-surface-800 border-l border-white/5 flex flex-col overflow-hidden animate-scale-in fixed md:static inset-y-0 right-0 z-50 shadow-2xl md:shadow-none">
             <div className="px-5 py-4 border-b border-white/5 flex justify-between items-center bg-surface-900/40">
               <span className="text-sm font-extrabold uppercase tracking-widest text-primary-400">Classrooms ({participants.length})</span>
               <button onClick={() => setShowPeople(false)} className="text-slate-500 hover:text-white transition">✕</button>
@@ -541,13 +711,13 @@ export const LiveClassroom = () => {
       </div>
 
       {/* ── Bottom Controls Toolbar ── */}
-      <footer className="px-6 py-5 bg-surface-800 border-t border-white/5 flex items-center justify-between">
+      <footer className="px-4 py-4 md:px-6 md:py-5 bg-surface-800 border-t border-white/5 flex flex-wrap items-center justify-between gap-4 landscape:max-lg:py-1.5 landscape:max-lg:gap-1.5 landscape:max-lg:px-3">
         
         {/* Left Toolbar actions */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 md:gap-4">
           <button
             onClick={toggleAudio}
-            className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
               isAudioMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
           >
@@ -555,7 +725,7 @@ export const LiveClassroom = () => {
           </button>
           <button
             onClick={toggleVideo}
-            className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
               isVideoMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
           >
@@ -565,7 +735,7 @@ export const LiveClassroom = () => {
           {isTeacher && (
             <button
               onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-              className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                 isScreenSharing ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
               }`}
             >
@@ -579,7 +749,7 @@ export const LiveClassroom = () => {
           {isTeacher && (
             <button
               onClick={isRecording ? stopRecordingSession : startRecordingSession}
-              className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                 isRecording ? 'bg-rose-600/20 border-rose-500/30 text-rose-400 animate-pulse' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
               }`}
             >
@@ -589,7 +759,7 @@ export const LiveClassroom = () => {
 
           <button
             onClick={() => { setShowChat(!showChat); setShowPeople(false); }}
-            className={`p-2.5 rounded-xl border text-xs transition cursor-pointer ${
+            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${
               showChat ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
             title="Toggle Chat"
@@ -598,7 +768,7 @@ export const LiveClassroom = () => {
           </button>
           <button
             onClick={() => { setShowPeople(!showPeople); setShowChat(false); }}
-            className={`p-2.5 rounded-xl border text-xs transition cursor-pointer ${
+            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${
               showPeople ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
             title="Toggle Participants"
@@ -611,7 +781,7 @@ export const LiveClassroom = () => {
         <div>
           <button
             onClick={handleLeave}
-            className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold tracking-wide uppercase transition cursor-pointer shadow-lg hover:shadow-rose-600/10"
+            className="px-5 py-2.5 landscape:max-lg:px-3 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold tracking-wide uppercase transition cursor-pointer shadow-lg hover:shadow-rose-600/10"
           >
             {isTeacher ? 'End Session' : 'Leave Class'}
           </button>
