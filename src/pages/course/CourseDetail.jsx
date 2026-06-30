@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import Toast from '../../components/common/Toast';
 
 
 const CourseDetail = () => {
@@ -17,6 +18,11 @@ const CourseDetail = () => {
   const [discountPrice, setDiscountPrice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const showToast = (type, message) => {
+    setToast({ show: true, message, type });
+  };
 
   useEffect(() => {
     fetchCourseDetails();
