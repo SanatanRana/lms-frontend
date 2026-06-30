@@ -5,35 +5,35 @@
    ═══════════════════════════════════════════════════════════════ */
 
 @theme {
-  /* Primary: Deep Teal-Blue (trust, knowledge, professionalism) */
-  --color-primary-50: #ecfdf5;
-  --color-primary-100: #d1fae5;
-  --color-primary-200: #a7f3d0;
-  --color-primary-300: #6ee7b7;
-  --color-primary-400: #34d399;
-  --color-primary-500: #0f766e;
-  --color-primary-600: #0d9488;
-  --color-primary-700: #0f766e;
-  --color-primary-800: #115e59;
-  --color-primary-900: #134e4a;
+  /* Primary: Charcoal / Slate (trust, professionalism, simplicity) */
+  --color-primary-50: #f8fafc;
+  --color-primary-100: #f1f5f9;
+  --color-primary-200: #e2e8f0;
+  --color-primary-300: #cbd5e1;
+  --color-primary-400: #94a3b8;
+  --color-primary-500: #64748b;
+  --color-primary-600: #0f172a;  /* Brand core charcoal */
+  --color-primary-700: #1e293b;  /* Hover dark slate */
+  --color-primary-800: #334155;
+  --color-primary-900: #475569;
 
   /* Accent: Warm Amber (energy, CTAs, highlights) */
   --color-accent-400: #fbbf24;
   --color-accent-500: #f59e0b;
   --color-accent-600: #d97706;
 
-  /* Surface Colors (cards, backgrounds) */
-  --color-surface-900: #0c1222;
-  --color-surface-800: #111827;
-  --color-surface-700: #1a2332;
-  --color-surface-600: #1e293b;
-  --color-surface-500: #273549;
+  /* Surface Colors (light theme cards, backgrounds) */
+  --color-surface-900: #f8fafc;  /* Clean off-white background */
+  --color-surface-800: #ffffff;  /* Clean white card surface */
+  --color-surface-700: #f1f5f9;  /* Light slate surface / hover */
+  --color-surface-600: #e2e8f0;  /* Light slate border */
+  --color-surface-500: #cbd5e1;
 
   /* Semantic Colors */
   --color-success: #10b981;
-  --color-error: #f43f5e;
-  --color-warning: #f59e0b;
-  --color-info: #3b82f6;
+  --color-error: #ef4444;
+  --color-warning: #d97706;
+  --color-info: #0284c7;
 
   /* Custom Animations */
   --animate-fade-in: fade-in 0.5s ease-out;
@@ -213,4 +213,73 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 html, body, #root {
   touch-action: manipulation;
+  background-color: var(--color-background);
+  color: var(--color-text-main);
+}
+
+/* Global Light Mode Overrides for text contrast */
+.text-white {
+  color: var(--color-text-main) !important;
+}
+
+/* Keep white text color ONLY inside components with dark backgrounds */
+.bg-primary-600,
+.bg-primary-700,
+.bg-primary,
+.bg-primary-hover,
+.bg-primary-light,
+.bg-teal-500,
+.bg-error,
+.bg-success,
+.bg-info,
+.bg-gradient-to-r,
+.bg-gradient-to-br,
+button.text-white,
+a.text-white,
+.text-white-force {
+  color: #ffffff !important;
+}
+
+/* Ensure button icons and sub-elements inside primary actions stay white */
+.bg-primary-600 *,
+.bg-primary-700 *,
+.bg-primary *,
+.bg-primary-hover *,
+.bg-primary-light *,
+.bg-teal-500 *,
+.bg-error *,
+.bg-success *,
+.bg-info *,
+.bg-gradient-to-r *,
+.bg-gradient-to-br * {
+  color: #ffffff !important;
+}
+
+/* Form element overrides for clean light borders and background */
+input, select, textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #0f172a !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Muted text color override */
+.text-slate-300, .text-slate-400, .text-text-muted, .text-slate-500 {
+  color: var(--color-text-muted) !important;
+}
+
+/* Scrollbar overrides for light theme */
+::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
 }
