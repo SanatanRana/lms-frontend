@@ -70,8 +70,11 @@ const StudentDashboard = () => {
   const updateStreak = () => {
     try {
       const today = new Date().toDateString();
-      const lastLogin = localStorage.getItem('last_login_date');
-      const savedStreak = parseInt(localStorage.getItem('learning_streak') || '1');
+      const userPrefix = user?.email || 'guest';
+      const lastLoginKey = `${userPrefix}_last_login_date`;
+      const streakKey = `${userPrefix}_learning_streak`;
+      const lastLogin = localStorage.getItem(lastLoginKey);
+      const savedStreak = parseInt(localStorage.getItem(streakKey) || '1');
 
       if (lastLogin === today) {
         setStreak(savedStreak);
@@ -88,8 +91,8 @@ const StudentDashboard = () => {
             newStreak = 1;
           }
         }
-        localStorage.setItem('learning_streak', newStreak.toString());
-        localStorage.setItem('last_login_date', today);
+        localStorage.setItem(streakKey, newStreak.toString());
+        localStorage.setItem(lastLoginKey, today);
         setStreak(newStreak);
       }
     } catch (e) {
@@ -194,7 +197,8 @@ const StudentDashboard = () => {
 
   // Continue Learning Logic
   let lastActiveCourse = null;
-  const lastActiveId = localStorage.getItem('last_active_course_id');
+  const userPrefix = user?.email || 'guest';
+  const lastActiveId = localStorage.getItem(`${userPrefix}_last_active_course_id`);
   if (lastActiveId) {
     lastActiveCourse = enrollments.find(e => e.course.id === parseInt(lastActiveId));
   }
@@ -325,7 +329,7 @@ const StudentDashboard = () => {
                   </div>
                   <button 
                     onClick={() => {
-                      localStorage.setItem('last_active_course_id', lastActiveCourse.course.id.toString());
+                      localStorage.setItem(`${userPrefix}_last_active_course_id`, lastActiveCourse.course.id.toString());
                       navigate(`/course/${lastActiveCourse.course.id}/learn`);
                     }}
                     className="bg-gradient-to-r from-teal-500 to-primary-600 hover:from-teal-400 hover:to-primary-500 text-white font-extrabold px-6 py-3.5 rounded-xl shadow-lg shadow-teal-500/10 w-full md:w-auto text-center transition select-none cursor-pointer hover:scale-102"
@@ -554,7 +558,7 @@ const StudentDashboard = () => {
                         </div>
                         <Link 
                           to={`/course/${enroll.course.id}/learn`}
-                          onClick={() => localStorage.setItem('last_active_course_id', enroll.course.id.toString())}
+                          onClick={() => localStorage.setItem(`${userPrefix}_last_active_course_id`, enroll.course.id.toString())}
                           className="w-full text-center block bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 py-2.5 rounded-xl text-[10px] font-black tracking-wide uppercase transition select-none cursor-pointer"
                         >
                           {enroll.progressPercent >= 100 ? 'Review Lectures' : 'Continue Learning'}

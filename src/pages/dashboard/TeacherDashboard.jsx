@@ -787,6 +787,26 @@ const TeacherDashboard = () => {
             </p>
           </div>
 
+          {/* HUD Stats Grid */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {[
+              { label: 'Total Courses', value: courses.length, desc: 'Created syllabi', icon: '📚', color: 'text-white' },
+              { label: 'Active Courses', value: courses.filter(c => c.active).length, desc: 'Published to catalog', icon: '✅', color: 'text-teal-400' },
+              { label: 'Enrolled Students', value: courses.reduce((acc, c) => acc + (c.enrolledStudentsCount || 0), 0), desc: 'Total course signups', icon: '👥', color: 'text-primary-400' },
+              { label: 'Estimated Revenue', value: `₹${courses.reduce((acc, c) => acc + (c.revenue || 0), 0)}`, desc: 'From successful payments', icon: '💰', color: 'text-success' },
+              { label: 'Live Classes', value: liveSessions.length, desc: 'Scheduled streams', icon: '🎥', color: 'text-amber-400' }
+            ].map((stat, idx) => (
+              <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-12 h-12 bg-white/5 rounded-bl-full flex items-center justify-center text-xs shrink-0 select-none">
+                  {stat.icon}
+                </div>
+                <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">{stat.label}</span>
+                <span className={`text-xl lg:text-2xl font-black ${stat.color} block mt-2.5`}>{stat.value}</span>
+                <span className="text-[9px] text-slate-400 block mt-1">{stat.desc}</span>
+              </div>
+            ))}
+          </section>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Left Column: My Courses (2/3 width) */}
             <div className="lg:col-span-2 space-y-6">

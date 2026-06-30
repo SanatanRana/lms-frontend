@@ -443,7 +443,7 @@ export const LiveClassroom = () => {
     <div className="h-screen flex flex-col bg-surface-900 text-white overflow-hidden">
       
       {/* ── Header Toolbar ── */}
-      <header className="px-6 py-4 bg-surface-800 border-b border-white/5 flex items-center justify-between">
+      <header className="px-6 py-4 bg-surface-800 border-b border-white/5 flex items-center justify-between landscape:max-lg:hidden">
         <div className="flex items-center gap-3">
           <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
           <h2 className="text-lg font-bold tracking-tight">{sessionDetails?.title || 'Live Classroom'}</h2>
@@ -471,12 +471,12 @@ export const LiveClassroom = () => {
       <div className="flex-1 flex overflow-hidden relative">
         
         {/* Left Side: Focus Mode Live Room View */}
-        <div className="flex-grow p-4 md:p-6 flex flex-col gap-4 bg-surface-950/60 overflow-hidden relative">
+        <div className="flex-grow p-4 md:p-6 flex flex-col gap-4 bg-surface-950/60 overflow-hidden relative landscape:max-lg:p-0">
           
           {/* Main Presenter Stage */}
           <div className="flex-1 min-h-0 w-full flex items-center justify-center relative">
             {isTeacher ? (
-              <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl">
+              <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -500,7 +500,7 @@ export const LiveClassroom = () => {
               </div>
             ) : (
               teacherStreamObj ? (
-                <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl">
+                <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
                   <video
                     autoPlay
                     playsInline
@@ -522,7 +522,7 @@ export const LiveClassroom = () => {
                   </div>
                 </div>
               ) : (
-                <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex flex-col items-center justify-center text-center p-8 shadow-2xl">
+                <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex flex-col items-center justify-center text-center p-8 shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
                   <div className="w-20 h-20 rounded-full bg-slate-950 border border-white/5 flex items-center justify-center text-3xl animate-bounce mb-4">
                     ⏳
                   </div>
@@ -536,7 +536,7 @@ export const LiveClassroom = () => {
           </div>
 
           {/* Student Thumbnail Strip (Horizontal Gallery) */}
-          <div className="w-full shrink-0 border-t border-white/5 pt-4 bg-slate-950/20 px-2 rounded-2xl">
+          <div className="w-full shrink-0 border-t border-white/5 pt-4 bg-slate-950/20 px-2 rounded-2xl landscape:max-lg:hidden">
             <h4 className="text-slate-400 text-[10px] font-extrabold tracking-widest uppercase mb-2 px-2 flex items-center gap-1.5">
               <span>👥 Student Gallery</span>
               <span className="bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded text-[8px] font-bold">
@@ -711,13 +711,13 @@ export const LiveClassroom = () => {
       </div>
 
       {/* ── Bottom Controls Toolbar ── */}
-      <footer className="px-4 py-4 md:px-6 md:py-5 bg-surface-800 border-t border-white/5 flex flex-wrap items-center justify-between gap-4">
+      <footer className="px-4 py-4 md:px-6 md:py-5 bg-surface-800 border-t border-white/5 flex flex-wrap items-center justify-between gap-4 landscape:max-lg:py-1.5 landscape:max-lg:gap-1.5 landscape:max-lg:px-3">
         
         {/* Left Toolbar actions */}
         <div className="flex flex-wrap items-center gap-2 md:gap-4">
           <button
             onClick={toggleAudio}
-            className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
               isAudioMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
           >
@@ -725,7 +725,7 @@ export const LiveClassroom = () => {
           </button>
           <button
             onClick={toggleVideo}
-            className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
               isVideoMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
           >
@@ -735,7 +735,7 @@ export const LiveClassroom = () => {
           {isTeacher && (
             <button
               onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-              className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                 isScreenSharing ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
               }`}
             >
@@ -749,7 +749,7 @@ export const LiveClassroom = () => {
           {isTeacher && (
             <button
               onClick={isRecording ? stopRecordingSession : startRecordingSession}
-              className={`px-4 py-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
+              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
                 isRecording ? 'bg-rose-600/20 border-rose-500/30 text-rose-400 animate-pulse' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
               }`}
             >
@@ -759,7 +759,7 @@ export const LiveClassroom = () => {
 
           <button
             onClick={() => { setShowChat(!showChat); setShowPeople(false); }}
-            className={`p-2.5 rounded-xl border text-xs transition cursor-pointer ${
+            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${
               showChat ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
             title="Toggle Chat"
@@ -768,7 +768,7 @@ export const LiveClassroom = () => {
           </button>
           <button
             onClick={() => { setShowPeople(!showPeople); setShowChat(false); }}
-            className={`p-2.5 rounded-xl border text-xs transition cursor-pointer ${
+            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${
               showPeople ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
             }`}
             title="Toggle Participants"
@@ -781,7 +781,7 @@ export const LiveClassroom = () => {
         <div>
           <button
             onClick={handleLeave}
-            className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold tracking-wide uppercase transition cursor-pointer shadow-lg hover:shadow-rose-600/10"
+            className="px-5 py-2.5 landscape:max-lg:px-3 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-extrabold tracking-wide uppercase transition cursor-pointer shadow-lg hover:shadow-rose-600/10"
           >
             {isTeacher ? 'End Session' : 'Leave Class'}
           </button>

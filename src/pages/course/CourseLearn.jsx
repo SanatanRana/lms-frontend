@@ -1,12 +1,15 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect, useRef, useContext } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import api from '../../services/api';
+import { AuthContext } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Toast from '../../components/common/Toast';
+import Modal from '../../components/common/Modal';
 
 const CourseLearn = () => {
   const { id } = useParams();
+  const location = useLocation();
+  const { user } = useContext(AuthContext);
 
   // Utility to format time e.g. 05:23
   const formatTime = (secs) => {
@@ -42,6 +45,13 @@ const CourseLearn = () => {
 
   // Custom Video Player State
   const videoRef = useRef(null);
+  const playerContainerRef = useRef(null);
+  const pendingSeekRef = useRef(null);
+  const [videoAspectRatio, setVideoAspectRatio] = useState(null);
+  const [isTheatreMode, setIsTheatreMode] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,13 +98,25 @@ const CourseLearn = () => {
       const rawSections = sectionsResp.data?.data || [];
       setSections(rawSections);
 
-      // Select first lesson by default
-      if (rawSections.length > 0) {
-        const firstSec = rawSections[0];
-        if (firstSec.lessons && firstSec.lessons.length > 0) {
-          setActiveLesson(firstSec.lessons[0]);
+      // Select initial lesson if passed in route state, otherwise first lesson
+      const initialLessonId = location.state?.initialLessonId;
+      let selectedLesson = null;
+      if (initialLessonId) {
+        for (const sec of rawSections) {
+          const found = (sec.lessons || []).find(l => l.id === initialLessonId);
+          if (found) {
+            selectedLesson = found;
+            break;
+          }
         }
       }
+      if (!selectedLesson && rawSections.length > 0) {
+        const firstSec = rawSections[0];
+        if (firstSec.lessons && firstSec.lessons.length > 0) {
+          selectedLesson = firstSec.lessons[0];
+        }
+      }
+      setActiveLesson(selectedLesson);
     } catch (error) {
       console.error("Error fetching sections:", error);
       setSections([]);
@@ -148,35 +170,148 @@ const CourseLearn = () => {
   // Load and Save Local Notes
   useEffect(() => {
     if (activeLesson) {
-      const notesKey = `notes_${id}_${activeLesson.id}`;
+      const userPrefix = user?.email || 'guest';
+      const notesKey = `${userPrefix}_notes_${id}_${activeLesson.id}`;
       const savedNotes = JSON.parse(localStorage.getItem(notesKey) || '[]');
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotes(savedNotes);
     }
-  }, [activeLesson]);
+  }, [activeLesson, user]);
 
-  // Auto Resume Seeker
-  useEffect(() => {
-    if (activeLesson && videoRef.current) {
-      const resumeKey = `resume_${id}_${activeLesson.id}`;
-      const savedTime = localStorage.getItem(resumeKey);
-      
-      // Delay slightly to let the video element buffer and load
-      const timer = setTimeout(() => {
-        if (savedTime && videoRef.current) {
-          videoRef.current.currentTime = parseFloat(savedTime);
-          showToast('success', `⏰ Auto-Resumed from ${formatTime(parseFloat(savedTime))}!`);
-        }
-      }, 500);
-      
-      return () => clearTimeout(timer);
+  const safeSeek = (time) => {
+    if (videoRef.current && videoRef.current.readyState >= 1) {
+      videoRef.current.currentTime = time;
+    } else {
+      pendingSeekRef.current = time;
     }
-  }, [activeLesson]);
+  };
+
+  // Silent Auto Resume Seeker
+  useEffect(() => {
+    if (activeLesson) {
+      const userPrefix = user?.email || 'guest';
+      const resumeKey = `${userPrefix}_resume_${id}_${activeLesson.id}`;
+      const savedTime = localStorage.getItem(resumeKey);
+      if (savedTime) {
+        const parsedTime = parseFloat(savedTime);
+        if (parsedTime > 5) {
+          safeSeek(parsedTime);
+          setCurrentTime(parsedTime);
+          showToast('success', `⏰ Resumed lecture from ${formatTime(parsedTime)}`);
+        }
+      }
+    }
+  }, [activeLesson, user]);
+
+  // Auto-hide controls overlay after 3.5 seconds of inactivity if playing
+  useEffect(() => {
+    let timer;
+    if (showControls && isPlaying) {
+      timer = setTimeout(() => {
+        setShowControls(false);
+      }, 3500);
+    }
+    return () => clearTimeout(timer);
+  }, [showControls, isPlaying]);
+
+  // Sync fullscreen change state
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // Keyboard Shortcuts Handler
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        return;
+      }
+      if (!videoRef.current) return;
+
+      switch (e.key.toLowerCase()) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'arrowleft':
+        case 'j':
+          e.preventDefault();
+          const backTime = Math.max(0, videoRef.current.currentTime - 10);
+          safeSeek(backTime);
+          setCurrentTime(backTime);
+          break;
+        case 'arrowright':
+        case 'l':
+          e.preventDefault();
+          const fwdTime = Math.min(duration, videoRef.current.currentTime + 10);
+          safeSeek(fwdTime);
+          setCurrentTime(fwdTime);
+          break;
+        case 'arrowup':
+          e.preventDefault();
+          const volUp = Math.min(1, volume + 0.1);
+          videoRef.current.volume = volUp;
+          setVolume(volUp);
+          setIsMuted(volUp === 0);
+          break;
+        case 'arrowdown':
+          e.preventDefault();
+          const volDn = Math.max(0, volume - 0.1);
+          videoRef.current.volume = volDn;
+          setVolume(volDn);
+          setIsMuted(volDn === 0);
+          break;
+        case 'f':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+          e.preventDefault();
+          toggleMute();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, duration, currentTime, volume, isMuted]);
+
+  // Mobile Auto-Landscape Fullscreen
+  useEffect(() => {
+    const lastOrientation = { val: window.innerHeight < window.innerWidth ? 'landscape' : 'portrait' };
+    const handleResize = () => {
+      const currentOrientation = window.innerHeight < window.innerWidth ? 'landscape' : 'portrait';
+      if (currentOrientation !== lastOrientation.val) {
+        lastOrientation.val = currentOrientation;
+        const isMobile = window.innerWidth <= 1024;
+        if (isMobile) {
+          if (currentOrientation === 'landscape' && !document.fullscreenElement) {
+            playerContainerRef.current?.requestFullscreen().catch(e => console.log(e));
+          } else if (currentOrientation === 'portrait' && document.fullscreenElement === playerContainerRef.current) {
+            document.exitFullscreen().catch(e => console.log(e));
+          }
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Mark lesson as complete and update student progress percent
   const handleMarkComplete = async () => {
     if (!activeLesson) return;
     try {
+      const userPrefix = user?.email || 'guest';
+      const resumeKey = `${userPrefix}_resume_${id}_${activeLesson.id}`;
+      localStorage.removeItem(resumeKey);
       const totalLessons = (sections || []).reduce((acc, s) => acc + (s.lessons ? s.lessons.length : 0), 0);
       if (totalLessons === 0) return;
 
@@ -300,9 +435,15 @@ const CourseLearn = () => {
       const curTime = videoRef.current.currentTime;
       setCurrentTime(curTime);
       
-      // Save for auto resume every 5 seconds
-      if (Math.round(curTime) % 5 === 0 && activeLesson) {
-        localStorage.setItem(`resume_${id}_${activeLesson.id}`, curTime.toString());
+      // Save for auto resume every 5 seconds (but clear if near end)
+      if (activeLesson) {
+        const userPrefix = user?.email || 'guest';
+        const resumeKey = `${userPrefix}_resume_${id}_${activeLesson.id}`;
+        if (duration > 0 && curTime >= duration - 8) {
+          localStorage.removeItem(resumeKey);
+        } else if (Math.round(curTime) % 5 === 0) {
+          localStorage.setItem(resumeKey, curTime.toString());
+        }
       }
     }
   };
@@ -310,15 +451,31 @@ const CourseLearn = () => {
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
+      const width = videoRef.current.videoWidth;
+      const height = videoRef.current.videoHeight;
+      if (width && height) {
+        setVideoAspectRatio(width / height);
+      }
+      
+      // Apply pending seeks safely
+      if (pendingSeekRef.current !== null) {
+        videoRef.current.currentTime = pendingSeekRef.current;
+        pendingSeekRef.current = null;
+      }
+      
+      // Persistent speed restoration
+      const userPrefix = user?.email || 'guest';
+      const speedKey = `${userPrefix}_aura_playback_speed`;
+      const savedSpeed = parseFloat(localStorage.getItem(speedKey) || '1');
+      videoRef.current.playbackRate = savedSpeed;
+      setPlaybackSpeed(savedSpeed);
     }
   };
 
   const handleScrub = (e) => {
-    if (videoRef.current) {
-      const seekTime = parseFloat(e.target.value);
-      videoRef.current.currentTime = seekTime;
-      setCurrentTime(seekTime);
-    }
+    const seekTime = parseFloat(e.target.value);
+    safeSeek(seekTime);
+    setCurrentTime(seekTime);
   };
 
   const handleSpeedChange = (speed) => {
@@ -326,6 +483,9 @@ const CourseLearn = () => {
       videoRef.current.playbackRate = speed;
       setPlaybackSpeed(speed);
       setShowSpeedMenu(false);
+      const userPrefix = user?.email || 'guest';
+      const speedKey = `${userPrefix}_aura_playback_speed`;
+      localStorage.setItem(speedKey, speed.toString());
       showToast('success', `Playback speed set to ${speed}x`);
     }
   };
@@ -372,14 +532,23 @@ const CourseLearn = () => {
   };
 
   const toggleFullscreen = () => {
-    if (videoRef.current) {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        videoRef.current.requestFullscreen().catch(err => {
+    const container = playerContainerRef.current;
+    if (!container) return;
+
+    if (!document.fullscreenElement) {
+      container.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(err => {
+        if (videoRef.current && videoRef.current.webkitEnterFullscreen) {
+          videoRef.current.webkitEnterFullscreen();
+        } else {
           console.error("Fullscreen failed:", err);
-        });
-      }
+        }
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(err => console.log(err));
     }
   };
 
@@ -397,7 +566,9 @@ const CourseLearn = () => {
 
     const updatedNotes = [...notes, newNote].sort((a, b) => a.timestamp - b.timestamp);
     setNotes(updatedNotes);
-    localStorage.setItem(`notes_${id}_${activeLesson.id}`, JSON.stringify(updatedNotes));
+    const userPrefix = user?.email || 'guest';
+    const notesKey = `${userPrefix}_notes_${id}_${activeLesson.id}`;
+    localStorage.setItem(notesKey, JSON.stringify(updatedNotes));
     setNoteInput('');
     showToast('success', `Note saved at ${newNote.timestampString}!`);
   };
@@ -406,7 +577,9 @@ const CourseLearn = () => {
     if (!activeLesson) return;
     const filtered = notes.filter(n => n.id !== noteId);
     setNotes(filtered);
-    localStorage.setItem(`notes_${id}_${activeLesson.id}`, JSON.stringify(filtered));
+    const userPrefix = user?.email || 'guest';
+    const notesKey = `${userPrefix}_notes_${id}_${activeLesson.id}`;
+    localStorage.setItem(notesKey, JSON.stringify(filtered));
     showToast('success', 'Note deleted.');
   };
 
@@ -420,7 +593,16 @@ const CourseLearn = () => {
     }
   };
 
-
+  const handleStopVideo = (e) => {
+    if (e) e.stopPropagation();
+    if (videoRef.current) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+      safeSeek(0);
+      setCurrentTime(0);
+      showToast('info', 'Video stopped ⏹');
+    }
+  };
 
   const renderVideoPlayer = (url, title) => {
     if (!url) return null;
@@ -444,7 +626,11 @@ const CourseLearn = () => {
     
     // HTML5 native video player with Custom Overlay UI
     return (
-      <div className="w-full h-full relative group">
+      <div 
+        ref={playerContainerRef} 
+        onClick={() => setShowControls(prev => !prev)}
+        className="video-player-container w-full h-full relative group bg-black flex items-center justify-center cursor-pointer select-none overflow-hidden"
+      >
         <video 
           ref={videoRef}
           src={url}
@@ -453,12 +639,63 @@ const CourseLearn = () => {
           onEnded={handleMarkComplete}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain bg-black"
         />
+
+        {/* Centered Controls Overlay (Large touch targets for mobile/gesture control) */}
+        <div 
+          className={`absolute inset-0 bg-black/45 flex items-center justify-center space-x-6 z-10 transition-opacity duration-300 ${
+            showControls ? 'opacity-100 font-bold' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          {/* Rewind 10s */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (videoRef.current) {
+                const back = Math.max(0, videoRef.current.currentTime - 10);
+                safeSeek(back);
+                setCurrentTime(back);
+              }
+            }}
+            className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs transition-transform active:scale-95 cursor-pointer shadow-lg border border-white/5"
+            title="Rewind 10s"
+          >
+            ↺ 10s
+          </button>
+
+          {/* Large Play/Pause */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              togglePlay();
+            }}
+            className="w-16 h-16 rounded-full bg-teal-500 hover:bg-teal-400 flex items-center justify-center text-white text-xl transition-transform active:scale-95 cursor-pointer shadow-2xl border border-white/10"
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+
+          {/* Forward 10s */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (videoRef.current) {
+                const fwd = Math.min(duration, videoRef.current.currentTime + 10);
+                safeSeek(fwd);
+                setCurrentTime(fwd);
+              }
+            }}
+            className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs transition-transform active:scale-95 cursor-pointer shadow-lg border border-white/5"
+            title="Forward 10s"
+          >
+            10s ↻
+          </button>
+        </div>
 
         {/* Buffer loading spinner overlay */}
         {buffering && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-15">
             <svg className="animate-spin h-10 w-10 text-teal-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -466,18 +703,13 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Big play button centered */}
-        {!isPlaying && (
-          <button 
-            onClick={togglePlay}
-            className="absolute inset-0 m-auto w-14 h-14 rounded-full bg-teal-500/90 hover:bg-teal-400 flex items-center justify-center text-white text-lg shadow-2xl transition hover:scale-105"
-          >
-            ▶
-          </button>
-        )}
-
-        {/* Control Bar Overlay on hover/tap */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col gap-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10">
+        {/* Control Bar Overlay */}
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className={`control-bar absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 z-20 ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           {/* Progress timeline scrubber */}
           <div className="flex items-center space-x-3">
             <span className="text-[10px] text-slate-300 font-mono">{formatTime(currentTime)}</span>
@@ -494,15 +726,42 @@ const CourseLearn = () => {
 
           {/* Action buttons */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               {/* Play Pause */}
-              <button onClick={togglePlay} className="text-white hover:text-teal-400 text-sm transition">
+              <button onClick={togglePlay} className="text-white hover:text-teal-400 text-sm transition cursor-pointer">
                 {isPlaying ? '⏸' : '▶'}
+              </button>
+
+              {/* Stop Video */}
+              <button 
+                onClick={handleStopVideo} 
+                className="text-rose-400 hover:text-rose-300 text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 px-2 py-0.5 rounded-lg transition cursor-pointer"
+                title="Stop Video"
+              >
+                ⏹ Stop
+              </button>
+
+              {/* Back 10s */}
+              <button 
+                onClick={() => { if (videoRef.current) { const back = Math.max(0, videoRef.current.currentTime - 10); safeSeek(back); setCurrentTime(back); } }} 
+                className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
+                title="Rewind 10s"
+              >
+                ↺ 10s
+              </button>
+
+              {/* Forward 10s */}
+              <button 
+                onClick={() => { if (videoRef.current) { const fwd = Math.min(duration, videoRef.current.currentTime + 10); safeSeek(fwd); setCurrentTime(fwd); } }} 
+                className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
+                title="Forward 10s"
+              >
+                10s ↻
               </button>
 
               {/* Mute Volume */}
               <div className="flex items-center space-x-2 group/vol">
-                <button onClick={toggleMute} className="text-white hover:text-teal-400 text-xs">
+                <button onClick={toggleMute} className="text-white hover:text-teal-400 text-xs cursor-pointer">
                   {isMuted ? '🔇' : '🔊'}
                 </button>
                 <input 
@@ -522,7 +781,7 @@ const CourseLearn = () => {
               <div className="relative">
                 <button 
                   onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }}
-                  className="text-white hover:text-teal-400 font-bold px-2 py-0.5 rounded bg-white/10"
+                  className="text-white hover:text-teal-400 font-bold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
                 >
                   {playbackSpeed}x
                 </button>
@@ -545,7 +804,7 @@ const CourseLearn = () => {
               <div className="relative">
                 <button 
                   onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }}
-                  className="text-white hover:text-teal-400 font-semibold px-2 py-0.5 rounded bg-white/10"
+                  className="text-white hover:text-teal-400 font-semibold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
                 >
                   {quality}
                 </button>
@@ -565,12 +824,21 @@ const CourseLearn = () => {
               </div>
 
               {/* Picture in picture */}
-              <button onClick={togglePip} className="text-white hover:text-teal-400" title="Picture in Picture">
+              <button onClick={togglePip} className="text-white hover:text-teal-400 cursor-pointer" title="Picture in Picture">
                 📺
               </button>
 
+              {/* Theatre Mode */}
+              <button 
+                onClick={() => setIsTheatreMode(!isTheatreMode)} 
+                className="hidden lg:block text-white hover:text-teal-400 text-xs cursor-pointer" 
+                title={isTheatreMode ? "Exit Theatre Mode" : "Theatre Mode"}
+              >
+                {isTheatreMode ? '🗗' : '🗖'}
+              </button>
+
               {/* Fullscreen */}
-              <button onClick={toggleFullscreen} className="text-white hover:text-teal-400" title="Fullscreen">
+              <button onClick={toggleFullscreen} className="text-white hover:text-teal-400 cursor-pointer" title="Fullscreen">
                 🔲
               </button>
             </div>
@@ -588,7 +856,7 @@ const CourseLearn = () => {
   const hasVideo = !!activeLesson || (!!course && !!course.introVideoUrl);
 
   return (
-    <div className="min-h-[85vh] bg-surface-900 flex flex-col-reverse lg:flex-row relative pb-20 lg:pb-0 h-[calc(100vh-64px)] overflow-hidden">
+    <div className="min-h-[85vh] bg-surface-900 flex flex-col-reverse lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
       
       {/* Toast popup */}
       {toast.show && (
@@ -596,13 +864,13 @@ const CourseLearn = () => {
       )}
 
       {/* ══════════════════ LEFT PANEL: SYLLABUS OUTLINE ══════════════════ */}
-      <div className="w-full lg:w-80 bg-surface-800/90 border-r border-surface-600 flex flex-col shrink-0">
+      <div className={`w-full lg:w-80 bg-surface-800/90 border-t lg:border-t-0 lg:border-r border-surface-600 flex flex-col shrink-0 lg:h-full transition-all duration-300 ${isTheatreMode ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden lg:border-0' : ''}`}>
         <div className="p-5 border-b border-surface-600">
           <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">Syllabus Outline</span>
           <h3 className="text-white font-bold text-base mt-1 line-clamp-1">{course?.title}</h3>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[50vh] lg:max-h-[75vh]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 lg:max-h-[75vh]">
           {(sections || []).map((sec, sIdx) => (
             <div key={sec.id} className="space-y-1.5">
               <span className="text-slate-400 font-extrabold text-[11px] uppercase tracking-wider block">
@@ -631,8 +899,8 @@ const CourseLearn = () => {
         </div>
       </div>
 
-      {/* ══════════════════ CENTER PANEL: PLAYER & TAB CONTENTS ══════════════════ */}
-      <div className="flex-grow p-4 md:p-6 space-y-6 max-w-5xl mx-auto w-full overflow-y-auto">
+      {/* ── Center Stage ── */}
+      <div className={`flex-grow p-4 md:p-6 space-y-6 mx-auto w-full lg:overflow-y-auto lg:h-full transition-all duration-300 ${isTheatreMode ? 'max-w-none' : 'max-w-5xl'}`}>
         {/* Live session alert banner */}
         {liveClass && (
           <div className="bg-error/10 border border-error/20 text-error p-4 rounded-2xl flex items-center justify-between animate-pulse">
@@ -652,7 +920,13 @@ const CourseLearn = () => {
         {/* Video Frame */}
         {hasVideo ? (
           <div className="space-y-4">
-            <div className="aspect-video bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl">
+            <div 
+              className="bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl transition-all duration-300 w-full"
+              style={{ 
+                aspectRatio: videoAspectRatio ? videoAspectRatio : '16/9', 
+                maxHeight: isFullscreen ? '100vh' : '70vh'
+              }}
+            >
               {renderVideoPlayer(activeLesson ? activeLesson.videoUrl : course?.introVideoUrl, activeLesson ? activeLesson.title : "Course Introduction")}
             </div>
 
@@ -779,22 +1053,37 @@ const CourseLearn = () => {
                   <p className="text-slate-500 text-xs italic">No downloadable resources added for this course.</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {resources.map(res => (
-                      <div key={res.id} className="p-3.5 bg-background/40 border border-border rounded-xl flex items-center justify-between">
-                        <div className="min-w-0 pr-3">
-                          <h5 className="text-xs font-bold text-white truncate">{res.title}</h5>
-                          <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{res.resourceType}</span>
+                    {resources.map(res => {
+                      const isPdf = (res.fileUrl || '').toLowerCase().endsWith('.pdf') || (res.title || '').toLowerCase().endsWith('.pdf');
+                      const isImg = /\.(jpg|jpeg|png|webp|gif)$/i.test(res.fileUrl || '');
+                      const canPreview = isPdf || isImg;
+                      return (
+                        <div key={res.id} className="p-3.5 bg-background/40 border border-border rounded-xl flex items-center justify-between">
+                          <div className="min-w-0 pr-3">
+                            <h5 className="text-xs font-bold text-white truncate">{res.title}</h5>
+                            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{res.resourceType}</span>
+                          </div>
+                          <div className="flex items-center space-x-2 shrink-0">
+                            {canPreview && (
+                              <button
+                                onClick={() => setPreviewUrl(res.fileUrl)}
+                                className="bg-primary-600/20 hover:bg-primary-600/40 text-primary-400 border border-primary-500/30 text-[10px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer"
+                              >
+                                View 👁️
+                              </button>
+                            )}
+                            <a 
+                              href={res.fileUrl} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
+                            >
+                              Download 💾
+                            </a>
+                          </div>
                         </div>
-                        <a 
-                          href={res.fileUrl} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 text-[10px] font-bold px-3 py-1.5 rounded-lg transition shrink-0"
-                        >
-                          Download 💾
-                        </a>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -999,6 +1288,33 @@ const CourseLearn = () => {
             </button>
           </form>
         </div>
+      )}
+
+      {/* ── Inline Resource Preview Modal ── */}
+      {previewUrl && (
+        <Modal
+          isOpen={!!previewUrl}
+          onClose={() => setPreviewUrl(null)}
+          title="Study Material Viewer"
+        >
+          <div className="w-full h-[75vh] bg-surface-900 rounded-xl overflow-hidden relative border border-white/5">
+            {previewUrl.toLowerCase().includes('.pdf') ? (
+              <iframe
+                src={`${previewUrl}#toolbar=0`}
+                title="PDF Preview"
+                className="w-full h-full border-0"
+              ></iframe>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center p-4 bg-slate-950/40">
+                <img
+                  src={previewUrl}
+                  alt="Resource Preview"
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-xl"
+                />
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );

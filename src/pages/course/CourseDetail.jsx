@@ -1,71 +1,36 @@
-import { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import Toast from '../../components/common/Toast';
+
 
 const CourseDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
 
-  // Course & Purchase State
   const [course, setCourse] = useState(null);
-  const [sections, setSections] = useState([]);
-  const [relatedCourses, setRelatedCourses] = useState([]);
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [couponStatus, setCouponStatus] = useState({ type: '', msg: '' });
   const [discountPrice, setDiscountPrice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
-  const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
 
-  // Interactive details state
-  const [expandedSection, setExpandedSection] = useState(0); // Index of expanded section
-  const [expandedFaq, setExpandedFaq] = useState(null);
+  useEffect(() => {
+    fetchCourseDetails();
+    if (user) {
+      checkEnrollment();
+    }
+  }, [id, user]);
 
-  // Hardcoded FAQs
-  const faqs = [
-    { q: "Is there a certificate awarded upon completion?", a: "Yes, once you complete 100% of the syllabus materials and lectures, you can instantly download a verifiable completion certificate from your dashboard." },
-    { q: "Do I get lifetime access to the course content?", a: "Absolutely! Once enrolled or purchased, you have lifetime, unlimited access to all lessons, resources, and live classroom lobby access." },
-    { q: "What is the refund policy?", a: "We offer a 7-day money-back guarantee. If you are not satisfied with the syllabus quality, contact support@auralms.com for a full refund." },
-    { q: "Can I ask questions or resolve doubts directly?", a: "Yes, every course includes an integrated Aura AI Doubt Assistant available 24/7. You can ask code doubts directly inside the learning viewer." }
-  ];
-
-  // Hardcoded reviews
-  const reviews = [
-    { author: "Suresh Patel", rating: 5, date: "3 days ago", comment: "Excellent course! The syllabus is structured perfectly. The explanation of advanced topics is crystal clear." },
-    { author: "Anjali Rao", rating: 4, date: "1 week ago", comment: "Very detailed lectures. The instructor code examples are practical. Highly recommend to anyone starting web dev." },
-    { author: "Vikram Singh", rating: 5, date: "2 weeks ago", comment: "Aura AI Doubt Solver was a game changer for me. Resolved all my syntax issues instantly while coding." }
-  ];
-
-  const fetchCourseData = async () => {
+  const fetchCourseDetails = async () => {
     try {
-      // 1. Fetch Course details
       const response = await api.get(`/courses/${id}`);
-      const courseData = response.data.data;
-      setCourse(courseData);
-
-      // 2. Fetch Syllabus Sections
-      try {
-        const sectionsResp = await api.get(`/courses/${id}/sections`);
-        setSections(sectionsResp.data.data || []);
-      } catch (err) {
-        console.error("Failed to load sections, falling back to empty:", err);
-      }
-
-      // 3. Fetch Related Courses
-      try {
-        const allResp = await api.get('/courses/all');
-        const filtered = (allResp.data.data || []).filter(c => c.id !== parseInt(id) && c.category === courseData.category);
-        setRelatedCourses(filtered.slice(0, 3));
-      } catch (err) {
-        console.error("Failed to load related courses:", err);
-      }
+      setCourse(response.data.data);
     } catch (error) {
-      console.error("Error fetching course data:", error);
+      console.error("Error fetching course:", error);
     } finally {
       setLoading(false);
     }
@@ -80,38 +45,30 @@ const CourseDetail = () => {
     }
   };
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    fetchCourseData();
-    if (user) {
-      checkEnrollment();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, user]);
-
-  const showToast = (type, message) => {
-    setToast({ show: true, type, message });
-    setTimeout(() => setToast({ show: false, type: 'success', message: '' }), 4000);
-  };
-
   const handleApplyCoupon = () => {
     setCouponStatus({ type: '', msg: '' });
     if (!couponCode.trim()) return;
 
+    // Simulate verification or just pass it to create-order
     if (couponCode.toUpperCase() === 'FIRST50') {
       const discounted = course.price * 0.5;
       setDiscountPrice(discounted);
       setCouponStatus({ type: 'success', msg: 'Coupon FIRST50 Applied! 50% discount.' });
-      showToast('success', 'Coupon Applied successfully! 50% discount applied.');
     } else if (couponCode.toUpperCase() === 'WELCOME10') {
       const discounted = course.price * 0.9;
       setDiscountPrice(discounted);
       setCouponStatus({ type: 'success', msg: 'Coupon WELCOME10 Applied! 10% discount.' });
-      showToast('success', 'Coupon Applied successfully! 10% discount applied.');
     } else {
       setCouponStatus({ type: 'error', msg: 'Invalid or expired coupon code' });
       setDiscountPrice(null);
+    }
+  };
+
+  const handleLessonClick = (les) => {
+    if (isEnrolled || user?.role === 'ADMIN') {
+      navigate(`/course/${id}/learn`, { state: { initialLessonId: les.id } });
+    } else {
+      showToast('error', 'Please enroll in this course to watch the lectures!');
     }
   };
 
@@ -126,45 +83,54 @@ const CourseDetail = () => {
       const coursePrice = discountPrice !== null ? discountPrice : (course.discountPrice || course.price);
 
       if (coursePrice === 0 || !coursePrice) {
-        // FREE enrollment
+        // FREE course enrollment flow
         const response = await api.post(`/enrollments/enroll/${id}`);
         if (response.data.success) {
-          showToast('success', 'Successfully Enrolled!');
-          setTimeout(() => navigate(`/course/${id}/learn`), 1000);
+          navigate(`/course/${id}/learn`);
         } else {
-          showToast('error', "Enrollment failed: " + response.data.message);
+          alert("Enrollment failed: " + response.data.message);
         }
       } else {
-        // PAID payment flow
+        // PAID course payment flow
+        // 1. Create payment order
         const orderResponse = await api.post('/payments/create-order', {
           courseId: parseInt(id),
           couponCode: couponStatus.type === 'success' ? couponCode : null
         });
-        const orderData = orderResponse.data.data;
+
+        const orderData = orderResponse.data.data; // orderId, amount, gateway, paymentId
+        
+        // 2. Simulate payment gateway verification
+        // Generate mock transaction ID
         const mockTxnId = "TXN_" + Math.random().toString(36).substring(2, 10).toUpperCase();
 
         const verifyResponse = await api.post('/payments/verify', {
           orderId: orderData.orderId,
           transactionId: mockTxnId,
-          status: 'SUCCESS'
+          gatewayData: {
+            status: "SUCCESS",
+            mode: "MOCK"
+          }
         });
 
         if (verifyResponse.data.success) {
-          showToast('success', 'Payment Successful! Redirecting to learn portal...');
-          setTimeout(() => navigate(`/course/${id}/learn`), 1500);
+          navigate(`/course/${id}/learn`);
         } else {
-          showToast('error', 'Payment verification failed.');
+          alert("Payment verification failed");
         }
       }
     } catch (error) {
-      console.error("Purchase error:", error);
-      showToast('error', error.response?.data?.message || 'Failed to complete transaction.');
+      console.error(error);
+      alert(error.response?.data?.message || error.response?.data || "Transaction failed. Please try again.");
     } finally {
       setPurchasing(false);
     }
   };
 
-  if (loading) return <LoadingSpinner text="Analyzing syllabus details..." />;
+  if (loading) {
+    return <LoadingSpinner text="Loading course details..." />;
+  }
+
 
   if (!course) {
     return (
@@ -179,10 +145,9 @@ const CourseDetail = () => {
   }
 
   const finalPrice = discountPrice !== null ? discountPrice : (course.discountPrice || course.price);
-  const totalLessons = sections.reduce((sum, s) => sum + (s.lessons?.length || 0), 0);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 animate-fade-in pb-20 relative">
+    <div className="max-w-7xl mx-auto px-4 py-6 animate-fade-in pb-32 relative">
       
       {/* Toast popup */}
       {toast.show && (
@@ -190,37 +155,26 @@ const CourseDetail = () => {
       )}
 
       {/* Back button */}
-      <Link to="/dashboard" className="inline-flex items-center space-x-2 text-xs text-slate-400 hover:text-white mb-6 transition">
+      <Link to="/" className="inline-flex items-center space-x-2 text-sm text-slate-400 hover:text-white mb-8 transition">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
         </svg>
-        <span>Back to Student Portal</span>
+        <span>Back to course listing</span>
       </Link>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        
-        {/* ══════════════════ LEFT COLUMN: DETAILS & ACCORDIONS ══════════════════ */}
+        {/* Main Details */}
         <div className="lg:col-span-2 space-y-8">
-          
-          {/* Header titles */}
-          <div className="space-y-4">
-            <span className="bg-primary-600/10 border border-primary-600/25 text-primary-400 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider">
+          <div>
+            <span className="bg-primary-600/10 border border-primary-600/20 text-primary-400 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider">
               {course.category || "General"}
             </span>
-            <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">
+            <h1 className="text-3xl md:text-5xl font-black text-white mt-4 mb-6 leading-tight">
               {course.title}
             </h1>
-            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
+            <p className="text-slate-300 text-base md:text-lg leading-relaxed whitespace-pre-wrap">
               {course.description}
             </p>
-
-            <div className="flex items-center space-x-4 text-xs font-bold text-slate-400 pt-2 border-b border-border/50 pb-4">
-              <span className="text-amber-400">⭐ 4.9 Rating</span>
-              <span>•</span>
-              <span>{sections.length} Chapters</span>
-              <span>•</span>
-              <span>{totalLessons} Lectures</span>
-            </div>
           </div>
 
           {/* Curriculum Section */}
@@ -262,15 +216,19 @@ const CourseDetail = () => {
                             <p className="text-xs text-slate-500 italic py-2">No video lectures in this chapter.</p>
                           ) : (
                             (sec.lessons || []).map((les, lIdx) => (
-                              <div key={les.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs text-slate-400">
+                              <div 
+                                key={les.id} 
+                                onClick={() => handleLessonClick(les)}
+                                className="py-2.5 px-3 first:pt-0 last:pb-0 flex items-center justify-between text-xs text-slate-400 hover:bg-slate-700/20 rounded-xl transition cursor-pointer group"
+                              >
                                 <div className="flex items-center space-x-2.5 min-w-0 pr-4">
-                                  <span className="text-slate-600">📹</span>
-                                  <span className="truncate font-medium text-slate-300">
+                                  <span className="text-slate-600 group-hover:text-teal-400 transition">📹</span>
+                                  <span className="truncate font-medium text-slate-300 group-hover:text-white transition">
                                     {sIdx + 1}.{lIdx + 1} {les.title}
                                   </span>
                                 </div>
-                                <span className="text-[10px] text-slate-500 shrink-0 font-bold bg-background/60 px-2 py-0.5 rounded border border-border">
-                                  Lecture
+                                <span className="text-[10px] text-slate-500 group-hover:text-teal-400 group-hover:bg-teal-500/10 group-hover:border-teal-500/20 shrink-0 font-bold bg-background/60 px-2.5 py-1 rounded-lg border border-border transition">
+                                  Play Lecture ▶
                                 </span>
                               </div>
                             ))
@@ -300,103 +258,40 @@ const CourseDetail = () => {
               </div>
             </div>
           </section>
-
-          {/* Prerequisites & FAQ Accordions */}
-          <section className="space-y-4">
-            <h3 className="text-base font-extrabold text-white">Frequently Asked Questions</h3>
-            <div className="space-y-2">
-              {faqs.map((faq, idx) => {
-                const isFaqExpanded = expandedFaq === idx;
-                return (
-                  <div key={idx} className="bg-card border border-border rounded-xl overflow-hidden">
-                    <button
-                      onClick={() => setExpandedFaq(isFaqExpanded ? null : idx)}
-                      className="w-full text-left p-4 flex justify-between items-center bg-background/30 hover:bg-background/50 transition"
-                    >
-                      <span className="text-white font-bold text-xs pr-4">{faq.q}</span>
-                      <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isFaqExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {isFaqExpanded && (
-                      <div className="p-4 border-t border-border text-xs text-text-muted leading-relaxed">
-                        {faq.a}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Reviews & Ratings */}
-          <section className="space-y-4">
-            <h3 className="text-base font-extrabold text-white">Student Reviews</h3>
-            
-            {/* Reviews display list */}
-            <div className="space-y-3">
-              {reviews.map((rev, idx) => (
-                <div key={idx} className="bg-card border border-border p-4 rounded-2xl space-y-2">
-                  <div className="flex justify-between items-baseline">
-                    <span className="font-bold text-xs text-slate-300">{rev.author}</span>
-                    <span className="text-[10px] text-slate-600">{rev.date}</span>
-                  </div>
-                  <div className="text-amber-400 text-xs">
-                    {Array.from({ length: rev.rating }).map((_, i) => (
-                      <span key={i}>★</span>
-                    ))}
-                  </div>
-                  <p className="text-xs text-text-muted leading-relaxed">{rev.comment}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
         </div>
 
-        {/* ══════════════════ RIGHT COLUMN: PRICE & PURCHASE CARD ══════════════════ */}
-        <div className="space-y-6">
-          
-          <div className="bg-card border border-border rounded-3xl p-6 shadow-xl relative overflow-hidden sticky top-24">
-            {/* Gloss decor */}
-            <div className="absolute top-0 right-0 w-24 h-24 bg-primary-600/10 rounded-full blur-2xl"></div>
+        {/* Purchase Card */}
+        <div className="bg-surface-800 border border-surface-600 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+          {/* Glowing dot */}
+          <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl"></div>
 
-            {/* Thumbnail preview */}
-            <div className="relative h-44 bg-slate-900 border border-border rounded-2xl overflow-hidden mb-6">
-              <img 
-                src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
-                alt={course.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                <span className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white text-base shadow-lg animate-pulse">
-                  ▶
-                </span>
-              </div>
-            </div>
+          <div className="relative">
+            <img 
+              src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+              alt={course.title}
+              className="w-full h-40 object-cover rounded-xl border border-surface-600 mb-6"
+            />
 
-            {/* Price tag */}
-            <div className="space-y-1 mb-6">
-              <span className="text-[10px] text-slate-500 uppercase tracking-wider font-extrabold">Course Enrollment Price</span>
-              <div className="flex items-baseline space-x-2.5">
-                <span className="text-2xl md:text-3xl font-black text-white">
+            <div className="mb-6">
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Total Price</span>
+              <div className="flex items-baseline space-x-2 mt-1">
+                <span className="text-3xl font-black text-white">
                   ₹{finalPrice}
                 </span>
-                {course.price > 0 && finalPrice !== course.price && (
-                  <span className="text-slate-500 line-through text-xs font-semibold">
+                {course.discountPrice && discountPrice === null && (
+                  <span className="text-slate-500 line-through text-sm">
                     ₹{course.price}
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Actions button */}
             {isEnrolled || user?.role === 'ADMIN' ? (
               <Link 
                 to={`/course/${id}/learn`}
-                className="w-full block text-center bg-gradient-to-r from-teal-500 to-primary-600 hover:from-teal-400 hover:to-primary-500 text-white font-extrabold py-3.5 px-4 rounded-xl shadow-lg transition select-none cursor-pointer"
+                className="w-full block text-center bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition"
               >
-                Go to learning viewer 🚀
+                Go to Learning Viewer
               </Link>
             ) : (
               <div className="space-y-4">
@@ -406,20 +301,20 @@ const CourseDetail = () => {
                     <div className="flex space-x-2">
                       <input 
                         type="text" 
-                        placeholder="Promo Code (e.g. FIRST50)" 
+                        placeholder="Coupon Code (e.g. FIRST50)" 
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value)}
-                        className="flex-1 bg-background/60 text-white border border-border rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:border-primary-600 transition"
+                        className="flex-1 bg-surface-900/50 text-white border border-surface-600 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-primary-600 transition"
                       />
                       <button 
                         onClick={handleApplyCoupon}
-                        className="bg-surface-700 border border-surface-500 text-slate-200 hover:bg-surface-600 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer"
+                        className="bg-surface-700 border border-surface-500 text-slate-200 hover:bg-surface-600 px-4 py-2 rounded-xl text-xs font-bold transition"
                       >
                         Apply
                       </button>
                     </div>
                     {couponStatus.msg && (
-                      <p className={`text-[10px] font-bold ${couponStatus.type === 'success' ? 'text-teal-400' : 'text-rose-400'}`}>
+                      <p className={`text-[10px] ${couponStatus.type === 'success' ? 'text-success' : 'text-rose-400'}`}>
                         {couponStatus.msg}
                       </p>
                     )}
@@ -429,7 +324,7 @@ const CourseDetail = () => {
                 <button 
                   onClick={handleEnrollOrBuy}
                   disabled={purchasing}
-                  className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-black py-3.5 px-4 rounded-xl shadow-lg shadow-primary-600/10 hover:shadow-primary-600/25 transition flex items-center justify-center space-x-2 select-none cursor-pointer"
+                  className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-primary-600/10 hover:shadow-primary-600/25 transition flex items-center justify-center space-x-2"
                 >
                   {purchasing ? (
                     <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
@@ -437,31 +332,34 @@ const CourseDetail = () => {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
                   ) : (
-                    <span>{finalPrice === 0 ? 'Enroll Now (Free)' : 'Buy Now & Access'}</span>
+                    <span>{finalPrice === 0 ? 'Enroll Now (Free)' : 'Enroll & Pay'}</span>
                   )}
                 </button>
               </div>
             )}
 
-            {/* Lifetime access info */}
-            <div className="mt-6 pt-5 border-t border-border space-y-2.5 text-[10px] text-slate-500 font-semibold">
-              <div className="flex items-center space-x-2">
-                <span className="text-teal-400">✓</span>
-                <span>Includes {totalLessons} lecture chapters</span>
+            <div className="mt-6 pt-6 border-t border-surface-600 space-y-3">
+              <div className="flex items-center space-x-2.5 text-xs text-slate-400">
+                <svg className="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Full lifetime access to contents</span>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-teal-400">✓</span>
-                <span>Verifiable learning certificate</span>
+              <div className="flex items-center space-x-2.5 text-xs text-slate-400">
+                <svg className="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Self-paced learning structure</span>
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-teal-400">✓</span>
-                <span>Lifetime unlimited access</span>
+              <div className="flex items-center space-x-2.5 text-xs text-slate-400">
+                <svg className="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Mock payment system support</span>
               </div>
             </div>
           </div>
-
         </div>
-
       </div>
 
       {/* ══════════════════ RELATED COURSES ══════════════════ */}
@@ -496,6 +394,36 @@ const CourseDetail = () => {
           </div>
         </section>
       )}
+
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-surface-800 border-t border-border p-4.5 z-30 flex items-center justify-between shadow-2xl">
+        <div className="space-y-0.5">
+          <span className="text-[9px] text-slate-500 uppercase tracking-wider font-extrabold block">Enrollment Price</span>
+          <span className="text-base font-black text-white">₹{finalPrice}</span>
+        </div>
+        <div className="w-1/2">
+          {isEnrolled || user?.role === 'ADMIN' ? (
+            <Link
+              to={`/course/${id}/learn`}
+              className="w-full block text-center bg-gradient-to-r from-teal-500 to-primary-600 hover:from-teal-400 hover:to-primary-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-lg transition select-none cursor-pointer"
+            >
+              Start Learning 🚀
+            </Link>
+          ) : (
+            <button
+              onClick={handleEnrollOrBuy}
+              disabled={purchasing}
+              className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-black py-2.5 px-4 rounded-xl text-xs shadow-lg transition flex items-center justify-center space-x-1 cursor-pointer"
+            >
+              {purchasing ? (
+                <span className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></span>
+              ) : (
+                <span>{finalPrice === 0 ? 'Enroll Free' : 'Buy Now'}</span>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
 
     </div>
   );
