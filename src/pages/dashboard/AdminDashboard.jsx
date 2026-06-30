@@ -423,9 +423,9 @@ const AdminDashboard = () => {
         </div>
 
         {/* Stats Grid Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-5 md:overflow-x-visible md:pb-0">
           {[1, 2, 3, 4, 5].map(n => (
-            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3 w-[200px] shrink-0 snap-start md:w-auto md:shrink">
               <div className="h-3 skeleton rounded w-1/2"></div>
               <div className="h-7 skeleton rounded-lg w-3/4"></div>
               <div className="h-2.5 skeleton rounded w-2/3"></div>
@@ -566,7 +566,7 @@ const AdminDashboard = () => {
 
       {/* ══════════════════ STATS CARDSHUD (Overview Only) ══════════════════ */}
       {analytics && activeTab === 'overview' && (
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <section className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-5 md:overflow-x-visible md:pb-0">
           {[
             { label: 'Total Revenue', value: `₹${analytics.totalRevenue || 0}`, desc: 'Net historical sales', icon: '💰', color: 'text-success' },
             { label: 'Monthly Revenue', value: `₹${analytics.monthlyRevenue || 0}`, desc: 'Current calendar month', icon: '📅', color: 'text-teal-400' },
@@ -574,7 +574,7 @@ const AdminDashboard = () => {
             { label: 'Students', value: analytics.totalStudents, desc: 'Registered accounts', icon: '👥', color: 'text-primary-400' },
             { label: 'Courses', value: analytics.totalCourses, desc: 'Syllabus courses', icon: '📚', color: 'text-white' }
           ].map((stat, idx) => (
-            <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden">
+            <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden w-[200px] shrink-0 snap-start md:w-auto md:shrink">
               <div className="absolute top-0 right-0 w-12 h-12 bg-white/5 rounded-bl-full flex items-center justify-center text-xs shrink-0 select-none">
                 {stat.icon}
               </div>
@@ -1472,7 +1472,7 @@ const AdminDashboard = () => {
             ) : selectedUser ? (
               <div className="space-y-4">
                 <div className="flex items-center space-x-3.5">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-teal-500 flex items-center justify-center font-black text-white text-base">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center font-black text-white text-base">
                     {selectedUser.name.substring(0,2).toUpperCase()}
                   </div>
                   <div>
@@ -1710,7 +1710,7 @@ const AdminDashboard = () => {
                 <label className="text-[10px] text-slate-500 uppercase tracking-wider font-extrabold block">Email Address</label>
                 <input
                   type="email"
-                  placeholder="john.doe@auralms.com"
+                  placeholder="john.doe@learngen.com"
                   value={registerForm.email}
                   onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
                   className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"

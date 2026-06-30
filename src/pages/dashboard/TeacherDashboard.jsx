@@ -1,40 +1,17 @@
 import { useState, useEffect, useContext } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import Toast from '../../components/common/Toast';
 import { AuthContext } from '../../context/AuthContext';
 
-// CSV Exporter (defined outside to satisfy react-hooks/purity rules)
-const exportToCSV = (data, filename, onSuccess, onError) => {
-  if (!data.length) {
-    if (onError) onError('No data to export.');
-    return;
-  }
-  const headers = Object.keys(data[0]).join(',');
-  const rows = data.map(row => 
-    Object.values(row).map(val => {
-      if (val === null || val === undefined) return '';
-      if (typeof val === 'object') return `"${JSON.stringify(val).replace(/"/g, '""')}"`;
-      return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
-    }).join(',')
-  );
-  const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", `${filename}_logs_${Date.now()}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  if (onSuccess) onSuccess('Logs exported to CSV successfully!');
-};
+
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const userName = user?.name || localStorage.getItem('userName') || 'Teacher';
 
-  const [searchParams, setSearchParams] = useSearchParams();
+
 
   // Datasets
   const [courses, setCourses] = useState([]);
@@ -109,26 +86,9 @@ const TeacherDashboard = () => {
   const [editingSession, setEditingSession] = useState(null);
 
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [uploadingResource, setUploadingResource] = useState(false);
   const [notification, setNotification] = useState({ type: '', msg: '' });
-
-  // Student Doubt reply Desk & Homework submissions mock datastream
-  const [doubts, setDoubts] = useState([
-    { id: 1, studentName: "Rajesh Kumar", courseName: "Full Stack Web Dev", question: "How does the virtual DOM work in React 19? Can you explain fiber reconciliation?", replies: [] },
-    { id: 2, studentName: "Priya Sharma", courseName: "UI/UX Foundations", question: "What is the optimal mobile grid padding for 390px layouts?", replies: [] }
-  ]);
-  const [doubtReplies, setDoubtReplies] = useState({});
-
-  const [homeworks, setHomeworks] = useState([
-    { id: 101, studentName: "Vikram Malhotra", courseName: "Full Stack Web Dev", title: "React Props Homework", submissionUrl: "https://github.com/vikram/props-assignment", status: "Submitted", grade: "", feedback: "" },
-    { id: 102, studentName: "Neha Gupta", courseName: "UI/UX Foundations", title: "Mobile Wireframe Mockups", submissionUrl: "https://figma.com/file/neha-mockup", status: "Submitted", grade: "", feedback: "" }
-  ]);
-
-  const [attendanceLogs] = useState([
-    { id: 1, sessionName: "React Hooks Masterclass", studentName: "Rajesh Kumar", email: "rajesh@gmail.com", joinedAt: "10:05 AM", stayDuration: "50 mins", attendance: "Present" },
-    { id: 2, sessionName: "React Hooks Masterclass", studentName: "Priya Sharma", email: "priya@gmail.com", joinedAt: "10:07 AM", stayDuration: "48 mins", attendance: "Present" },
-    { id: 3, sessionName: "Figma Grid Layouts", studentName: "Neha Gupta", email: "neha@gmail.com", joinedAt: "02:00 PM", stayDuration: "60 mins", attendance: "Present" }
-  ]);
 
   const showNotification = (type, msg) => {
     setNotification({ type, msg });
@@ -461,23 +421,7 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleStartEditLive = (session) => {
-    setEditingSession(session);
-    const truncateSeconds = (dtStr) => {
-      if (!dtStr) return "";
-      return dtStr.substring(0, 16);
-    };
 
-    setLiveForm({
-      courseId: session.course?.id?.toString() || '',
-      title: session.title || '',
-      startTime: truncateSeconds(session.startTime),
-      endTime: truncateSeconds(session.endTime),
-      maxParticipants: session.maxParticipants || 50,
-      chatEnabled: session.chatEnabled !== false,
-      guestAccessEnabled: session.guestAccessEnabled !== false
-    });
-  };
 
   const handleCancelEditLive = () => {
     setEditingSession(null);
@@ -562,9 +506,9 @@ const TeacherDashboard = () => {
         </div>
 
         {/* Stats Grid Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(n => (
-            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3">
+        <div className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-5 md:overflow-x-visible md:pb-0">
+          {[1, 2, 3, 4, 5].map(n => (
+            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3 w-[200px] shrink-0 snap-start md:w-auto md:shrink">
               <div className="h-3 skeleton rounded w-1/2"></div>
               <div className="h-7 skeleton rounded-lg w-3/4"></div>
               <div className="h-2.5 skeleton rounded w-2/3"></div>
@@ -788,7 +732,7 @@ const TeacherDashboard = () => {
           </div>
 
           {/* HUD Stats Grid */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <section className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-5 md:overflow-x-visible md:pb-0">
             {[
               { label: 'Total Courses', value: courses.length, desc: 'Created syllabi', icon: '📚', color: 'text-white' },
               { label: 'Active Courses', value: courses.filter(c => c.active).length, desc: 'Published to catalog', icon: '✅', color: 'text-teal-400' },
@@ -796,7 +740,7 @@ const TeacherDashboard = () => {
               { label: 'Estimated Revenue', value: `₹${courses.reduce((acc, c) => acc + (c.revenue || 0), 0)}`, desc: 'From successful payments', icon: '💰', color: 'text-success' },
               { label: 'Live Classes', value: liveSessions.length, desc: 'Scheduled streams', icon: '🎥', color: 'text-amber-400' }
             ].map((stat, idx) => (
-              <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden">
+              <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden w-[200px] shrink-0 snap-start md:w-auto md:shrink">
                 <div className="absolute top-0 right-0 w-12 h-12 bg-white/5 rounded-bl-full flex items-center justify-center text-xs shrink-0 select-none">
                   {stat.icon}
                 </div>
@@ -980,7 +924,7 @@ const TeacherDashboard = () => {
                     </div>
                   </div>
 
-                  <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
+                  <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
                     Schedule Class
                   </button>
                 </form>

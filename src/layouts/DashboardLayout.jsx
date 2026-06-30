@@ -373,10 +373,14 @@ const DashboardLayout = () => {
         {/* Brand Header */}
         <div className="h-16 flex items-center px-6 border-b border-border">
           <Link to="/" className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-600 to-teal-500 flex items-center justify-center font-black text-white text-base">
-              A
-            </div>
-            <span className="text-lg font-black text-white tracking-tight">AuraLMS</span>
+            <img 
+              src="/logo-icon.jpg" 
+              alt="LearnGen Logo" 
+              className="w-8 h-8 rounded-xl object-cover shadow-glow" 
+            />
+            <span className="text-lg font-black text-white tracking-tight">
+              Learn<span className="text-primary-light">Gen</span>
+            </span>
           </Link>
         </div>
 
@@ -599,10 +603,14 @@ const DashboardLayout = () => {
             {/* Header */}
             <div className="h-16 flex items-center justify-between px-6 border-b border-border">
               <Link to="/" className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-600 to-teal-500 flex items-center justify-center font-black text-white text-base">
-                  A
-                </div>
-                <span className="text-base font-black text-white tracking-tight">AuraLMS</span>
+                <img 
+                  src="/logo-icon.jpg" 
+                  alt="LearnGen Logo" 
+                  className="w-8 h-8 rounded-xl object-cover shadow-glow" 
+                />
+                <span className="text-base font-black text-white tracking-tight">
+                  Learn<span className="text-primary-light">Gen</span>
+                </span>
               </Link>
               <button
                 onClick={() => setIsDrawerOpen(false)}

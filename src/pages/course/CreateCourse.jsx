@@ -350,7 +350,7 @@ const CreateCourse = () => {
                 <button 
                   type="submit" 
                   disabled={loading}
-                  className="bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-semibold py-2.5 px-6 rounded-xl shadow-lg shadow-primary-600/15 hover:shadow-primary-600/25 transition flex items-center justify-center space-x-2 text-sm cursor-pointer"
+                  className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white font-semibold py-2.5 px-6 rounded-xl shadow-lg shadow-primary-600/15 hover:shadow-primary-600/25 transition flex items-center justify-center space-x-2 text-sm cursor-pointer"
                 >
                   {loading ? (
                     <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">

@@ -196,11 +196,13 @@ const CourseLearn = () => {
         const parsedTime = parseFloat(savedTime);
         if (parsedTime > 5) {
           safeSeek(parsedTime);
+          /* eslint-disable-next-line react-hooks/set-state-in-effect */
           setCurrentTime(parsedTime);
           showToast('success', `⏰ Resumed lecture from ${formatTime(parsedTime)}`);
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLesson, user]);
 
   // Auto-hide controls overlay after 3.5 seconds of inactivity if playing
@@ -223,65 +225,7 @@ const CourseLearn = () => {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Keyboard Shortcuts Handler
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
-        return;
-      }
-      if (!videoRef.current) return;
 
-      switch (e.key.toLowerCase()) {
-        case ' ':
-        case 'k':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'arrowleft':
-        case 'j':
-          e.preventDefault();
-          const backTime = Math.max(0, videoRef.current.currentTime - 10);
-          safeSeek(backTime);
-          setCurrentTime(backTime);
-          break;
-        case 'arrowright':
-        case 'l':
-          e.preventDefault();
-          const fwdTime = Math.min(duration, videoRef.current.currentTime + 10);
-          safeSeek(fwdTime);
-          setCurrentTime(fwdTime);
-          break;
-        case 'arrowup':
-          e.preventDefault();
-          const volUp = Math.min(1, volume + 0.1);
-          videoRef.current.volume = volUp;
-          setVolume(volUp);
-          setIsMuted(volUp === 0);
-          break;
-        case 'arrowdown':
-          e.preventDefault();
-          const volDn = Math.max(0, volume - 0.1);
-          videoRef.current.volume = volDn;
-          setVolume(volDn);
-          setIsMuted(volDn === 0);
-          break;
-        case 'f':
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case 'm':
-          e.preventDefault();
-          toggleMute();
-          break;
-        default:
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, duration, currentTime, volume, isMuted]);
 
   // Mobile Auto-Landscape Fullscreen
   useEffect(() => {
@@ -465,7 +409,7 @@ const CourseLearn = () => {
       
       // Persistent speed restoration
       const userPrefix = user?.email || 'guest';
-      const speedKey = `${userPrefix}_aura_playback_speed`;
+      const speedKey = `${userPrefix}_learngen_playback_speed`;
       const savedSpeed = parseFloat(localStorage.getItem(speedKey) || '1');
       videoRef.current.playbackRate = savedSpeed;
       setPlaybackSpeed(savedSpeed);
@@ -484,7 +428,7 @@ const CourseLearn = () => {
       setPlaybackSpeed(speed);
       setShowSpeedMenu(false);
       const userPrefix = user?.email || 'guest';
-      const speedKey = `${userPrefix}_aura_playback_speed`;
+      const speedKey = `${userPrefix}_learngen_playback_speed`;
       localStorage.setItem(speedKey, speed.toString());
       showToast('success', `Playback speed set to ${speed}x`);
     }
@@ -551,6 +495,71 @@ const CourseLearn = () => {
       }).catch(err => console.log(err));
     }
   };
+
+  // Keyboard Shortcuts Handler
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        return;
+      }
+      if (!videoRef.current) return;
+
+      switch (e.key.toLowerCase()) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'arrowleft':
+        case 'j': {
+          e.preventDefault();
+          const backTime = Math.max(0, videoRef.current.currentTime - 10);
+          safeSeek(backTime);
+          setCurrentTime(backTime);
+          break;
+        }
+        case 'arrowright':
+        case 'l': {
+          e.preventDefault();
+          const fwdTime = Math.min(duration, videoRef.current.currentTime + 10);
+          safeSeek(fwdTime);
+          setCurrentTime(fwdTime);
+          break;
+        }
+        case 'arrowup': {
+          e.preventDefault();
+          const volUp = Math.min(1, volume + 0.1);
+          videoRef.current.volume = volUp;
+          setVolume(volUp);
+          setIsMuted(volUp === 0);
+          break;
+        }
+        case 'arrowdown': {
+          e.preventDefault();
+          const volDn = Math.max(0, volume - 0.1);
+          videoRef.current.volume = volDn;
+          setVolume(volDn);
+          setIsMuted(volDn === 0);
+          break;
+        }
+        case 'f':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+          e.preventDefault();
+          toggleMute();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, duration, currentTime, volume, isMuted]);
 
   // Add Timestamped Note
   const handleAddNote = (e) => {
@@ -1191,7 +1200,7 @@ const CourseLearn = () => {
       {/* Floating AI Doubt Solver Trigger FAB */}
       <button
         onClick={() => setShowAiChat(!showAiChat)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-teal-500 flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40 select-none cursor-pointer"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-primary-light flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40 select-none cursor-pointer"
         title="Open AI Doubt Assistant"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1206,7 +1215,7 @@ const CourseLearn = () => {
           <div className="p-4.5 border-b border-surface-600 flex justify-between items-center bg-background/50">
             <div>
               <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest">AI Doubt assistant</span>
-              <h3 className="font-extrabold text-sm text-white mt-0.5">Aura AI Tutor</h3>
+              <h3 className="font-extrabold text-sm text-white mt-0.5">LearnGen AI Tutor</h3>
             </div>
             <button 
               onClick={() => setShowAiChat(false)}

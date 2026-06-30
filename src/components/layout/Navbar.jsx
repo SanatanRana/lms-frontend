@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
@@ -119,11 +120,13 @@ const Navbar = () => {
 
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2.5 group">
-            <div className="w-8.5 h-8.5 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center font-black text-white text-base shadow-glow group-hover:opacity-90 transition">
-              A
-            </div>
-            <span className="text-lg font-extrabold text-white">
-              Aura<span className="text-primary-light">LMS</span>
+            <img 
+              src="/logo-icon.jpg" 
+              alt="LearnGen Logo" 
+              className="w-8.5 h-8.5 rounded-xl object-cover shadow-glow group-hover:opacity-90 transition"
+            />
+            <span className="text-lg font-extrabold text-white tracking-tight">
+              Learn<span className="text-primary-light">Gen</span>
             </span>
           </Link>
         </div>
@@ -282,10 +285,14 @@ const Navbar = () => {
             {/* Header */}
             <div className="h-16 flex items-center justify-between px-6 border-b border-border">
               <Link to="/" className="flex items-center space-x-2.5" onClick={() => setMobileMenuOpen(false)}>
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center font-black text-white text-base shadow-glow">
-                  A
-                </div>
-                <span className="text-base font-black text-white tracking-tight">AuraLMS</span>
+                <img 
+                  src="/logo-icon.jpg" 
+                  alt="LearnGen Logo" 
+                  className="w-8 h-8 rounded-xl object-cover shadow-glow" 
+                />
+                <span className="text-base font-black text-white tracking-tight">
+                  Learn<span className="text-primary-light">Gen</span>
+                </span>
               </Link>
               <button
                 onClick={() => setMobileMenuOpen(false)}

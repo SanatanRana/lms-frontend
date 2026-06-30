@@ -1,10 +1,10 @@
-/* AuraLMS Design System Tokens — Tailwind CSS v4 Theme Extender */
+/* LearnGen Design System Tokens — Tailwind CSS v4 Theme Extender */
 
 @theme {
   /* Colors */
-  --color-primary: #0d9488;        /* Teal 600 */
-  --color-primary-hover: #0f766e;  /* Teal 700 */
-  --color-primary-light: #14b8a6;  /* Teal 500 */
+  --color-primary: #3b82f6;        /* Royal Blue (Vibrant) */
+  --color-primary-hover: #1d4ed8;  /* Deep Blue */
+  --color-primary-light: #8b5cf6;  /* Vibrant Purple */
   
   --color-secondary: #475569;      /* Slate 600 */
   --color-secondary-hover: #334155;/* Slate 700 */
@@ -55,7 +55,7 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 20px rgba(13, 148, 136, 0.15);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.2);
 
   /* Animation Standards */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);

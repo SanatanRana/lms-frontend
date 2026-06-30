@@ -68,17 +68,30 @@ const Login = () => {
       <div className="absolute top-[-10%] left-[-10%] w-[350px] md:w-[500px] h-[350px] md:h-[500px] bg-primary-600/10 rounded-full blur-3xl animate-float"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[300px] md:w-[450px] h-[300px] md:h-[450px] bg-teal-500/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '3.5s' }}></div>
 
+      {/* Back to Home Button */}
+      <Link 
+        to="/" 
+        className="absolute top-6 left-6 flex items-center space-x-2 text-text-muted hover:text-white transition duration-200 bg-surface-900/40 hover:bg-surface-800/60 border border-surface-600/30 px-3.5 py-2 rounded-xl text-xs font-semibold backdrop-blur-md shadow-lg z-20"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        <span>Back to Home</span>
+      </Link>
+
       {/* Main Auth Card Container */}
       <div className="w-full max-w-[450px] bg-surface-900/60 backdrop-blur-xl border border-surface-600/30 rounded-2xl md:rounded-3xl shadow-2xl p-6 md:p-10 relative z-10 transition duration-300">
         
         {/* Logo Section */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-600 to-teal-500 flex items-center justify-center font-black text-white text-xl shadow-lg shadow-primary-600/30 mb-3 transform hover:rotate-3 transition duration-300">
-            A
-          </div>
-          <span className="text-2xl font-black text-white tracking-tight">AuraLMS</span>
+        <Link to="/" className="flex flex-col items-center mb-8 group cursor-pointer">
+          <img 
+            src="/logo-icon.jpg" 
+            alt="LearnGen Logo" 
+            className="w-12 h-12 rounded-xl object-cover shadow-lg shadow-primary/30 mb-3 transform group-hover:rotate-3 transition duration-300"
+          />
+          <span className="text-2xl font-black text-white tracking-tight group-hover:text-primary transition duration-300">LearnGen</span>
           <span className="text-[10px] text-primary-400 font-bold uppercase tracking-widest mt-1">Premium Learning Network</span>
-        </div>
+        </Link>
 
         {view === 'login' && (
           <div className="animate-fade-in">
@@ -153,7 +166,7 @@ const Login = () => {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full h-12 bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-bold rounded-xl shadow-lg shadow-primary-600/20 hover:shadow-primary-600/35 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                className="w-full h-12 bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white font-bold rounded-xl shadow-lg shadow-primary-600/20 hover:shadow-primary-600/35 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
               >
                 {loading ? (
                   <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
@@ -204,7 +217,7 @@ const Login = () => {
               <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full h-12 bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-bold rounded-xl shadow-lg shadow-primary-600/20 hover:shadow-primary-600/35 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
+                className="w-full h-12 bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white font-bold rounded-xl shadow-lg shadow-primary-600/20 hover:shadow-primary-600/35 transition-all duration-300 flex items-center justify-center space-x-2 disabled:opacity-60 cursor-pointer active:scale-[0.99]"
               >
                 {loading ? (
                   <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin"></div>
