@@ -30,15 +30,17 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
   const [isAudioMuted, setIsAudioMuted] = useState(true);
   const [isVideoMuted, setIsVideoMuted] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [connectionQuality, setConnectionQuality] = useState('good'); // good, fair, poor
 
   // Peer connections map (wsSessionId -> RTCPeerConnection)
   const pcsRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+  const candidateQueuesRef = useRef({});
 
   // Initialize camera and microphone
-  const initLocalStream = useCallback(async () => {
+  const initLocalStream = useCallback(async (initialMicEnabled = false, initialCamEnabled = false) => {
     try {
       // Teachers always publish both. Students join muted by default.
       const constraints = {
@@ -50,12 +52,12 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       localStreamRef.current = stream;
       setLocalStream(stream);
 
-      // Start muted for safety
-      stream.getAudioTracks().forEach(track => { track.enabled = false; });
-      stream.getVideoTracks().forEach(track => { track.enabled = false; });
+      // Apply initial mic/cam preferences
+      stream.getAudioTracks().forEach(track => { track.enabled = initialMicEnabled; });
+      stream.getVideoTracks().forEach(track => { track.enabled = initialCamEnabled; });
       
-      setIsAudioMuted(true);
-      setIsVideoMuted(true);
+      setIsAudioMuted(!initialMicEnabled);
+      setIsVideoMuted(!initialCamEnabled);
 
       return stream;
     } catch (err) {
@@ -65,13 +67,30 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         localStreamRef.current = stream;
         setLocalStream(stream);
-        setIsAudioMuted(true);
+        
+        stream.getAudioTracks().forEach(track => { track.enabled = initialMicEnabled; });
+        setIsAudioMuted(!initialMicEnabled);
+        setIsVideoMuted(true);
+        
         return stream;
       } catch (err2) {
         console.error('Microphone access also failed:', err2);
       }
     }
     return null;
+  }, []);
+
+  const removePeer = useCallback((targetId) => {
+    if (pcsRef.current[targetId]) {
+      pcsRef.current[targetId].close();
+      delete pcsRef.current[targetId];
+    }
+    delete candidateQueuesRef.current[targetId];
+    setRemoteStreams(prev => {
+      const copy = { ...prev };
+      delete copy[targetId];
+      return copy;
+    });
   }, []);
 
   const createPC = useCallback((targetId, stream, participantName, participantRole) => {
@@ -123,19 +142,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     };
 
     return pc;
-  }, [sessionId, wsSend]);
-
-  const removePeer = useCallback((targetId) => {
-    if (pcsRef.current[targetId]) {
-      pcsRef.current[targetId].close();
-      delete pcsRef.current[targetId];
-    }
-    setRemoteStreams(prev => {
-      const copy = { ...prev };
-      delete copy[targetId];
-      return copy;
-    });
-  }, []);
+  }, [sessionId, wsSend, removePeer]);
 
   // Initiate WebRTC connection (Teacher initiates to students)
   const initiateCall = useCallback(async (targetId, participantName, participantRole) => {
@@ -160,6 +167,18 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       const pc = createPC(senderId, localStreamRef.current, peer?.name, peer?.role);
       
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
+
+      // Process queued candidates
+      const queue = candidateQueuesRef.current[senderId] || [];
+      for (const cand of queue) {
+        await pc.addIceCandidate(new RTCIceCandidate({
+          candidate: cand.candidate,
+          sdpMid: cand.sdpMid,
+          sdpMLineIndex: cand.sdpMLineIndex
+        })).catch(e => console.error("Error adding queued candidate:", e));
+      }
+      candidateQueuesRef.current[senderId] = [];
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -178,6 +197,17 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       const pc = pcsRef.current[senderId];
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp }));
+
+        // Process queued candidates
+        const queue = candidateQueuesRef.current[senderId] || [];
+        for (const cand of queue) {
+          await pc.addIceCandidate(new RTCIceCandidate({
+            candidate: cand.candidate,
+            sdpMid: cand.sdpMid,
+            sdpMLineIndex: cand.sdpMLineIndex
+          })).catch(e => console.error("Error adding queued candidate:", e));
+        }
+        candidateQueuesRef.current[senderId] = [];
       }
     } catch (err) {
       console.error(`Failed to handle answer from peer ${senderId}:`, err);
@@ -188,12 +218,17 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
   const handleIceCandidate = useCallback(async (senderId, payload) => {
     try {
       const pc = pcsRef.current[senderId];
-      if (pc && payload.candidate) {
+      if (pc && pc.remoteDescription && pc.remoteDescription.type && payload.candidate) {
         await pc.addIceCandidate(new RTCIceCandidate({
           candidate: payload.candidate,
           sdpMid: payload.sdpMid,
           sdpMLineIndex: payload.sdpMLineIndex
         }));
+      } else {
+        if (!candidateQueuesRef.current[senderId]) {
+          candidateQueuesRef.current[senderId] = [];
+        }
+        candidateQueuesRef.current[senderId].push(payload);
       }
     } catch (err) {
       console.error(`Failed to add ICE candidate from peer ${senderId}:`, err);
@@ -222,6 +257,29 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'video', muted: nextState });
   }, [isVideoMuted, sessionId, wsSend]);
 
+  const stopScreenShare = useCallback(() => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+    }
+    setIsScreenSharing(false);
+    wsSend('SCREEN_SHARE', sessionId, { sharing: false });
+
+    // Restore camera video track in all active peer connections
+    if (localStreamRef.current) {
+      const cameraTrack = localStreamRef.current.getVideoTracks()[0];
+      if (cameraTrack) {
+        Object.values(pcsRef.current).forEach(pc => {
+          const senders = pc.getSenders();
+          const sender = senders.find(s => s.track && s.track.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(isVideoMuted ? null : cameraTrack);
+          }
+        });
+      }
+    }
+  }, [sessionId, isVideoMuted, wsSend]);
+
   const startScreenShare = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -247,30 +305,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     } catch (err) {
       console.error('Error starting screen share:', err);
     }
-  }, [sessionId, wsSend]);
-
-  const stopScreenShare = useCallback(() => {
-    if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach(track => track.stop());
-      screenStreamRef.current = null;
-    }
-    setIsScreenSharing(false);
-    wsSend('SCREEN_SHARE', sessionId, { sharing: false });
-
-    // Restore camera video track in all active peer connections
-    if (localStreamRef.current) {
-      const cameraTrack = localStreamRef.current.getVideoTracks()[0];
-      if (cameraTrack) {
-        Object.values(pcsRef.current).forEach(pc => {
-          const senders = pc.getSenders();
-          const sender = senders.find(s => s.track && s.track.kind === 'video');
-          if (sender) {
-            sender.replaceTrack(isVideoMuted ? null : cameraTrack);
-          }
-        });
-      }
-    }
-  }, [sessionId, isVideoMuted, wsSend]);
+  }, [sessionId, wsSend, stopScreenShare]);
 
   const cleanUpAll = useCallback(() => {
     // Stop local streams
@@ -288,6 +323,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       pcsRef.current[key].close();
     });
     pcsRef.current = {};
+    candidateQueuesRef.current = {};
     
     setLocalStream(null);
     setRemoteStreams({});

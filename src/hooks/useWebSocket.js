@@ -4,12 +4,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * Custom React hook for managing WebSocket signaling connection.
  * Handles auto-reconnect, heartbeats, and message queues.
  */
-export const useWebSocket = (url, onMessageCallback) => {
+export const useWebSocket = (url, onMessageCallback, onConnectCallback) => {
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef(null);
   const messageQueueRef = useRef([]);
   const reconnectTimeoutRef = useRef(null);
   const heartbeatIntervalRef = useRef(null);
+  const connectRef = useRef(null);
 
   const cleanUp = useCallback(() => {
     if (heartbeatIntervalRef.current) {
@@ -57,6 +58,10 @@ export const useWebSocket = (url, onMessageCallback) => {
             socket.send(JSON.stringify({ type: 'PING' }));
           }
         }, 30000);
+
+        if (onConnectCallback) {
+          onConnectCallback();
+        }
       };
 
       socket.onmessage = (event) => {
@@ -82,7 +87,7 @@ export const useWebSocket = (url, onMessageCallback) => {
         if (event.code !== 1000) {
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('[SignalingWS] Attempting reconnect...');
-            connect();
+            if (connectRef.current) connectRef.current();
           }, 3000);
         }
       };
@@ -93,7 +98,11 @@ export const useWebSocket = (url, onMessageCallback) => {
     } catch (error) {
       console.error('[SignalingWS] Error establishing WebSocket connection:', error);
     }
-  }, [url, onMessageCallback]);
+  }, [url, onMessageCallback, onConnectCallback]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  });
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
