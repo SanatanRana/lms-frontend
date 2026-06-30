@@ -18,6 +18,8 @@ const CourseDetail = () => {
   const [discountPrice, setDiscountPrice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [relatedCourses, setRelatedCourses] = useState([]);
   
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const showToast = (type, message) => {
@@ -34,7 +36,19 @@ const CourseDetail = () => {
   const fetchCourseDetails = async () => {
     try {
       const response = await api.get(`/courses/${id}`);
-      setCourse(response.data.data);
+      const courseData = response.data.data;
+      setCourse(courseData);
+
+      // Fetch related courses in the same category
+      if (courseData && courseData.category) {
+        try {
+          const relatedRes = await api.get(`/courses/category/${courseData.category}`);
+          const filtered = (relatedRes.data.data || []).filter(c => c.id !== parseInt(id));
+          setRelatedCourses(filtered.slice(0, 3));
+        } catch (err) {
+          console.error("Error fetching related courses:", err);
+        }
+      }
     } catch (error) {
       console.error("Error fetching course:", error);
     } finally {
@@ -151,6 +165,8 @@ const CourseDetail = () => {
   }
 
   const finalPrice = discountPrice !== null ? discountPrice : (course.discountPrice || course.price);
+  const sections = course.sections || [];
+  const totalLessons = sections.reduce((acc, sec) => acc + (sec.lessons || []).length, 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 animate-fade-in pb-32 relative">
