@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import api from '../../api/axiosConfig';
+import api from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 
 const CourseDetail = () => {
