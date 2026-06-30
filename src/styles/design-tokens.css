@@ -2,34 +2,34 @@
 
 @theme {
   /* Colors */
-  --color-primary: #0f172a;        /* Charcoal / Slate 900 */
-  --color-primary-hover: #1e293b;  /* Slate 800 */
-  --color-primary-light: #334155;  /* Slate 700 */
+  --color-primary: #0d9488;        /* Teal 600 */
+  --color-primary-hover: #0f766e;  /* Teal 700 */
+  --color-primary-light: #14b8a6;  /* Teal 500 */
   
-  --color-secondary: #64748b;      /* Slate 500 */
-  --color-secondary-hover: #475569;/* Slate 600 */
+  --color-secondary: #475569;      /* Slate 600 */
+  --color-secondary-hover: #334155;/* Slate 700 */
   
   --color-success: #10b981;        /* Emerald 500 */
-  --color-success-bg: rgba(16, 185, 129, 0.08);
+  --color-success-bg: rgba(16, 185, 129, 0.1);
   
-  --color-error: #ef4444;          /* Red 500 */
-  --color-error-bg: rgba(239, 68, 68, 0.08);
+  --color-error: #f43f5e;          /* Rose 500 */
+  --color-error-bg: rgba(244, 63, 94, 0.1);
   
-  --color-warning: #d97706;        /* Amber 700 */
-  --color-warning-bg: rgba(245, 158, 11, 0.08);
+  --color-warning: #f59e0b;        /* Amber 500 */
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
   
-  --color-info: #0284c7;           /* Sky 700 */
-  --color-info-bg: rgba(59, 130, 246, 0.08);
+  --color-info: #3b82f6;           /* Blue 500 */
+  --color-info-bg: rgba(59, 130, 246, 0.1);
 
-  --color-background: #f8fafc;     /* Clean off-white background */
-  --color-card: #ffffff;           /* Clean white card surface */
-  --color-card-light: #f1f5f9;     /* Light slate surface / hover */
-  --color-border: #e2e8f0;         /* Light slate border */
-  --color-border-light: rgba(15, 23, 42, 0.05);
+  --color-background: #0c1222;     /* Core deep dark theme background */
+  --color-card: #111827;           /* Card background */
+  --color-card-light: #1a2332;     /* Lighter surface / hover card */
+  --color-border: #1e293b;         /* Border slate-800 */
+  --color-border-light: rgba(255, 255, 255, 0.05);
 
-  --color-text-main: #0f172a;      /* Slate 900 */
-  --color-text-muted: #475569;     /* Slate 600 */
-  --color-text-inverse: #ffffff;   /* Pure White for buttons */
+  --color-text-main: #f1f5f9;      /* Slate 100 */
+  --color-text-muted: #94a3b8;     /* Slate 400 */
+  --color-text-inverse: #0c1222;   /* Deep Dark text for light elements */
 
   /* Spacing: Using default Tailwind 8px numerical scale. Custom values commented out to prevent layout conflicts. */
   /*
