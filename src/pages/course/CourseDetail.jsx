@@ -273,7 +273,7 @@ const CourseDetail = () => {
               </div>
               <div className="min-w-0">
                 <h4 className="text-white font-extrabold text-sm">{course.teacherName || 'Professional Educator'}</h4>
-                <p className="text-[10px] text-primary-400 font-bold uppercase tracking-wider">AuraLMS Certified Expert</p>
+                <p className="text-[10px] text-primary-400 font-bold uppercase tracking-wider">LearnGen Certified Expert</p>
                 <p className="text-xs text-text-muted mt-2 leading-relaxed">
                   Passionate industry professional dedicated to teaching students global standards. 10+ years of software design and teaching experience.
                 </p>
@@ -311,7 +311,7 @@ const CourseDetail = () => {
             {isEnrolled || user?.role === 'ADMIN' ? (
               <Link 
                 to={`/course/${id}/learn`}
-                className="w-full block text-center bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition"
+                className="w-full block text-center bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white font-bold py-3.5 px-4 rounded-xl shadow-lg transition"
               >
                 Go to Learning Viewer
               </Link>
@@ -346,7 +346,7 @@ const CourseDetail = () => {
                 <button 
                   onClick={handleEnrollOrBuy}
                   disabled={purchasing}
-                  className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-primary-600/10 hover:shadow-primary-600/25 transition flex items-center justify-center space-x-2"
+                  className="w-full bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-primary-600/10 hover:shadow-primary-600/25 transition flex items-center justify-center space-x-2"
                 >
                   {purchasing ? (
                     <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
@@ -427,7 +427,7 @@ const CourseDetail = () => {
           {isEnrolled || user?.role === 'ADMIN' ? (
             <Link
               to={`/course/${id}/learn`}
-              className="w-full block text-center bg-gradient-to-r from-teal-500 to-primary-600 hover:from-teal-400 hover:to-primary-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-lg transition select-none cursor-pointer"
+              className="w-full block text-center bg-gradient-to-r from-primary-light to-primary-600 hover:from-primary-light hover:to-primary-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow-lg transition select-none cursor-pointer"
             >
               Start Learning 🚀
             </Link>
@@ -435,7 +435,7 @@ const CourseDetail = () => {
             <button
               onClick={handleEnrollOrBuy}
               disabled={purchasing}
-              className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white font-black py-2.5 px-4 rounded-xl text-xs shadow-lg transition flex items-center justify-center space-x-1 cursor-pointer"
+              className="w-full bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white font-black py-2.5 px-4 rounded-xl text-xs shadow-lg transition flex items-center justify-center space-x-1 cursor-pointer"
             >
               {purchasing ? (
                 <span className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></span>

@@ -88,16 +88,16 @@ const Home = () => {
             <svg className="w-5 h-5 text-slate-500 ml-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input 
-              type="text" 
-              placeholder="What do you want to learn today?" 
+            <input
+              type="text"
+              placeholder="What do you want to learn today?"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 bg-transparent px-3 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none"
             />
-            <button 
+            <button
               type="submit"
-              className="bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition"
+              className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition"
             >
               Search
             </button>
@@ -105,16 +105,15 @@ const Home = () => {
         </div>
 
         {/* Category Filters */}
-        <div className="px-4 md:px-6 max-w-7xl mx-auto flex flex-wrap gap-2 mb-6">
+        <div className="px-4 md:px-6 max-w-7xl mx-auto flex overflow-x-auto pb-2 gap-2 mb-6 scrollbar-none snap-x snap-mandatory flex-nowrap md:flex-wrap md:overflow-x-visible md:pb-0">
           {categories.map(cat => (
             <button
               key={cat.name}
               onClick={() => filterByCategory(cat.name)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5 ${
-                categoryFilter === cat.name 
-                  ? 'bg-primary-600/15 border-primary-600 text-primary-400 shadow-md shadow-primary-600/10' 
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5 shrink-0 snap-start ${categoryFilter === cat.name
+                  ? 'bg-primary-600/15 border-primary-600 text-primary-400 shadow-md shadow-primary-600/10'
                   : 'bg-surface-800 border-surface-600 text-slate-400 hover:border-surface-500 hover:text-white'
-              }`}
+                }`}
             >
               <span>{cat.icon}</span>
               <span>{cat.name}</span>
@@ -145,24 +144,24 @@ const Home = () => {
               <p className="text-slate-500 text-xs mb-6 max-w-sm mx-auto leading-relaxed">
                 We couldn't find any courses matching your search criteria.
               </p>
-              <button 
-                onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }} 
+              <button
+                onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }}
                 className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition cursor-pointer"
               >
                 Reset Filters
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="flex overflow-x-auto pb-4 gap-6 snap-x snap-mandatory flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:overflow-x-visible md:pb-0 scrollbar-none">
               {courses.map(course => (
-                <Link 
-                  to={`/course/${course.id}`} 
+                <Link
+                  to={`/course/${course.id}`}
                   key={course.id}
-                  className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover"
+                  className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover w-[285px] shrink-0 snap-start md:w-auto md:shrink"
                 >
                   <div className="h-44 bg-surface-900 relative overflow-hidden">
-                    <img 
-                      src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+                    <img
+                      src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"}
                       alt={course.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                     />
@@ -209,7 +208,7 @@ const Home = () => {
   return (
     <div className="min-h-screen">
       {/* ═══════════════════ HERO SECTION ═══════════════════ */}
-      <section className="relative py-20 md:py-28 px-6 overflow-hidden text-center max-w-6xl mx-auto">
+      <section className="relative pt-12 pb-16 md:py-24 px-6 overflow-hidden text-center max-w-6xl mx-auto">
         {/* Decorative blobs */}
         <div className="absolute top-10 left-1/4 w-72 h-72 bg-primary-600/8 rounded-full blur-3xl animate-float"></div>
         <div className="absolute bottom-10 right-1/4 w-64 h-64 bg-accent-500/6 rounded-full blur-3xl animate-float" style={{ animationDelay: '3s' }}></div>
@@ -221,7 +220,7 @@ const Home = () => {
             India's Premium Learning Platform
           </span>
 
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.1]">
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-[1.1]">
             Learn without limits.
             <br />
             <span className="gradient-text">
@@ -229,7 +228,7 @@ const Home = () => {
             </span>
           </h1>
 
-          <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-slate-400 text-base md:text-lg max-w-2xl mx-auto mb-6 leading-relaxed">
             Access premium courses by industry experts, join interactive live classes, 
             and leverage AI-powered doubt solving — all in one platform.
           </p>
@@ -239,32 +238,31 @@ const Home = () => {
             <svg className="w-5 h-5 text-slate-500 ml-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input 
-              type="text" 
-              placeholder="What do you want to learn today?" 
+            <input
+              type="text"
+              placeholder="What do you want to learn today?"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent px-3 py-3 text-white placeholder-slate-500 text-sm focus:outline-none"
+              className="flex-1 bg-transparent px-3 py-2 md:py-3 text-white placeholder-slate-500 text-sm focus:outline-none"
             />
-            <button 
+            <button
               type="submit"
-              className="bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white px-6 py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-primary-600/20"
+              className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-6 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-primary-600/20"
             >
               Search
             </button>
           </form>
 
           {/* Category Filters */}
-          <div className="flex flex-wrap justify-center gap-2 mb-8">
+          <div className="flex overflow-x-auto pb-2 gap-2 mb-6 scrollbar-none snap-x snap-mandatory flex-nowrap md:flex-wrap md:justify-center md:overflow-x-visible md:pb-0">
             {categories.map(cat => (
               <button
                 key={cat.name}
                 onClick={() => filterByCategory(cat.name)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5 ${
-                  categoryFilter === cat.name 
-                    ? 'bg-primary-600/15 border-primary-600 text-primary-400 shadow-md shadow-primary-600/10' 
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center space-x-1.5 shrink-0 snap-start ${categoryFilter === cat.name
+                    ? 'bg-primary-600/15 border-primary-600 text-primary-400 shadow-md shadow-primary-600/10'
                     : 'bg-surface-800 border-surface-600 text-slate-400 hover:border-surface-500 hover:text-white'
-                }`}
+                  }`}
               >
                 <span>{cat.icon}</span>
                 <span>{cat.name}</span>
@@ -275,18 +273,18 @@ const Home = () => {
       </section>
 
       {/* ═══════════════════ STATS BAR ═══════════════════ */}
-      <section className="max-w-5xl mx-auto px-6 mb-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <section className="max-w-5xl mx-auto px-6 mb-10 md:mb-16">
+        <div className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-4 md:gap-4 md:overflow-x-visible md:pb-0">
           {[
             { number: '10,000+', label: 'Active Students', icon: '👥' },
             { number: '500+', label: 'Premium Courses', icon: '📚' },
             { number: '50+', label: 'Expert Instructors', icon: '🎓' },
             { number: '95%', label: 'Satisfaction Rate', icon: '⭐' }
           ].map((stat, idx) => (
-            <div key={idx} className="glass rounded-2xl p-5 text-center card-hover">
-              <span className="text-2xl mb-2 block">{stat.icon}</span>
-              <span className="text-xl md:text-2xl font-extrabold text-white block">{stat.number}</span>
-              <span className="text-xs text-slate-400 font-medium">{stat.label}</span>
+            <div key={idx} className="glass rounded-2xl p-4 md:p-5 text-center card-hover w-[160px] shrink-0 snap-start md:w-auto md:shrink">
+              <span className="text-xl md:text-2xl mb-1 md:mb-2 block">{stat.icon}</span>
+              <span className="text-lg md:text-2xl font-extrabold text-white block">{stat.number}</span>
+              <span className="text-[10px] md:text-xs text-slate-400 font-medium">{stat.label}</span>
             </div>
           ))}
         </div>
@@ -294,12 +292,17 @@ const Home = () => {
 
       {/* ═══════════════════ COURSES GRID ═══════════════════ */}
       <section className="px-6 py-8 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-white flex items-center space-x-3">
-            <span className="w-1.5 h-7 rounded-full bg-gradient-to-b from-primary-500 to-teal-400"></span>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl md:text-2xl font-bold text-white flex items-center space-x-2.5">
+            <span className="w-1.5 h-7 rounded-full bg-gradient-to-b from-primary-500 to-primary-light"></span>
             <span>Explore Premium Courses</span>
           </h2>
-          <span className="text-sm text-slate-400 font-medium">{courses.length} courses</span>
+          <Link to="/courses" className="text-xs font-bold text-primary hover:text-primary-light transition flex items-center space-x-1 shrink-0">
+            <span>View All</span>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
         </div>
 
         {loading ? (
@@ -325,8 +328,8 @@ const Home = () => {
             <p className="text-slate-500 text-xs mb-6 max-w-sm mx-auto leading-relaxed">
               We couldn't find any courses matching your search criteria. Try removing search keywords or selecting another category filter.
             </p>
-            <button 
-              onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }} 
+            <button
+              onClick={() => { setSearchQuery(''); setCategoryFilter('All'); fetchCourses(); }}
               className="bg-primary hover:bg-primary-light text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase transition duration-200 cursor-pointer"
             >
               Reset All Filters
@@ -334,16 +337,16 @@ const Home = () => {
           </div>
         ) : (
           <div className="flex overflow-x-auto pb-4 gap-6 snap-x snap-mandatory flex-nowrap md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:overflow-x-visible md:pb-0 scrollbar-none">
-            {courses.map(course => (
-              <Link 
-                to={`/course/${course.id}`} 
+            {courses.slice(0, 6).map(course => (
+              <Link
+                to={`/course/${course.id}`}
                 key={course.id}
-                className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover w-[290px] shrink-0 snap-start md:w-auto md:shrink"
+                className="group bg-surface-800 border border-surface-600 hover:border-primary-600/40 rounded-2xl overflow-hidden shadow-lg hover:shadow-primary-600/5 transition duration-300 flex flex-col card-hover w-[285px] shrink-0 snap-start md:w-auto md:shrink"
               >
                 {/* Thumbnail */}
                 <div className="h-44 bg-surface-900 relative overflow-hidden">
-                  <img 
-                    src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+                  <img
+                    src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"}
                     alt={course.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
@@ -393,10 +396,10 @@ const Home = () => {
       </section>
 
       {/* ═══════════════════ WHY CHOOSE US ═══════════════════ */}
-      <section className="px-6 py-20 max-w-6xl mx-auto">
+      <section className="px-6 py-12 md:py-20 max-w-6xl mx-auto">
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Why students love <span className="gradient-text">AuraLMS</span>
+            Why students love <span className="gradient-text">LearnGen</span>
           </h2>
           <p className="text-slate-400 text-base max-w-xl mx-auto">
             Everything you need for a world-class learning experience, all in one platform.
@@ -442,9 +445,9 @@ const Home = () => {
               success: { bg: 'bg-success/10', border: 'border-success/20', text: 'text-success' }
             };
             const c = colorMap[feature.color];
-            
+
             return (
-              <div key={idx} className="glass rounded-2xl p-7 card-hover group w-[290px] shrink-0 snap-start md:w-auto md:shrink">
+              <div key={idx} className="glass rounded-2xl p-6 md:p-7 card-hover group w-[285px] shrink-0 snap-start md:w-auto md:shrink">
                 <div className={`w-14 h-14 rounded-xl ${c.bg} border ${c.border} ${c.text} flex items-center justify-center mb-5 group-hover:scale-110 transition`}>
                   {feature.icon}
                 </div>
@@ -457,24 +460,24 @@ const Home = () => {
       </section>
 
       {/* ═══════════════════ CTA SECTION ═══════════════════ */}
-      <section className="px-6 py-16 max-w-4xl mx-auto mb-8">
-        <div className="relative glass rounded-3xl p-10 md:p-14 text-center overflow-hidden">
+      <section className="px-6 py-10 md:py-16 max-w-4xl mx-auto mb-8">
+        <div className="relative glass rounded-3xl p-6 md:p-12 text-center overflow-hidden">
           <div className="absolute top-0 left-0 w-40 h-40 bg-primary-600/10 rounded-full blur-3xl"></div>
           <div className="absolute bottom-0 right-0 w-40 h-40 bg-accent-500/10 rounded-full blur-3xl"></div>
-          
+
           <div className="relative">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-white mb-4">
               Ready to start learning?
             </h2>
-            <p className="text-slate-400 text-base mb-8 max-w-lg mx-auto">
-              Join thousands of students who are already building their future with AuraLMS. 
+            <p className="text-slate-400 text-sm md:text-base mb-6 max-w-lg mx-auto leading-relaxed">
+              Join thousands of students who are already building their future with LearnGen.
               Start your journey today — it's free to get started.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/register" className="bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white px-8 py-3.5 rounded-xl text-sm font-bold shadow-xl shadow-primary-600/20 hover:shadow-primary-600/30 transition">
+              <Link to="/register" className="w-full sm:w-auto bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-8 py-3.5 rounded-xl text-sm font-bold shadow-xl shadow-primary-600/20 hover:shadow-primary-600/30 transition text-center">
                 Create Free Account
               </Link>
-              <Link to="/courses" className="bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 px-8 py-3.5 rounded-xl text-sm font-semibold transition">
+              <Link to="/courses" className="w-full sm:w-auto bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 px-8 py-3.5 rounded-xl text-sm font-semibold transition text-center">
                 Browse Courses
               </Link>
             </div>

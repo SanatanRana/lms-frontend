@@ -465,7 +465,7 @@ const CourseLearn = () => {
       
       // Persistent speed restoration
       const userPrefix = user?.email || 'guest';
-      const speedKey = `${userPrefix}_aura_playback_speed`;
+      const speedKey = `${userPrefix}_learngen_playback_speed`;
       const savedSpeed = parseFloat(localStorage.getItem(speedKey) || '1');
       videoRef.current.playbackRate = savedSpeed;
       setPlaybackSpeed(savedSpeed);
@@ -484,7 +484,7 @@ const CourseLearn = () => {
       setPlaybackSpeed(speed);
       setShowSpeedMenu(false);
       const userPrefix = user?.email || 'guest';
-      const speedKey = `${userPrefix}_aura_playback_speed`;
+      const speedKey = `${userPrefix}_learngen_playback_speed`;
       localStorage.setItem(speedKey, speed.toString());
       showToast('success', `Playback speed set to ${speed}x`);
     }
@@ -1191,7 +1191,7 @@ const CourseLearn = () => {
       {/* Floating AI Doubt Solver Trigger FAB */}
       <button
         onClick={() => setShowAiChat(!showAiChat)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-teal-500 flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40 select-none cursor-pointer"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-primary-light flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40 select-none cursor-pointer"
         title="Open AI Doubt Assistant"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1206,7 +1206,7 @@ const CourseLearn = () => {
           <div className="p-4.5 border-b border-surface-600 flex justify-between items-center bg-background/50">
             <div>
               <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest">AI Doubt assistant</span>
-              <h3 className="font-extrabold text-sm text-white mt-0.5">Aura AI Tutor</h3>
+              <h3 className="font-extrabold text-sm text-white mt-0.5">LearnGen AI Tutor</h3>
             </div>
             <button 
               onClick={() => setShowAiChat(false)}

@@ -562,9 +562,9 @@ const TeacherDashboard = () => {
         </div>
 
         {/* Stats Grid Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(n => (
-            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3">
+        <div className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-5 md:overflow-x-visible md:pb-0">
+          {[1, 2, 3, 4, 5].map(n => (
+            <div key={n} className="bg-card border border-border rounded-2xl p-5 space-y-3 w-[200px] shrink-0 snap-start md:w-auto md:shrink">
               <div className="h-3 skeleton rounded w-1/2"></div>
               <div className="h-7 skeleton rounded-lg w-3/4"></div>
               <div className="h-2.5 skeleton rounded w-2/3"></div>
@@ -788,7 +788,7 @@ const TeacherDashboard = () => {
           </div>
 
           {/* HUD Stats Grid */}
-          <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <section className="flex overflow-x-auto snap-x snap-mandatory flex-nowrap gap-4 scrollbar-none pb-4 md:grid md:grid-cols-5 md:overflow-x-visible md:pb-0">
             {[
               { label: 'Total Courses', value: courses.length, desc: 'Created syllabi', icon: '📚', color: 'text-white' },
               { label: 'Active Courses', value: courses.filter(c => c.active).length, desc: 'Published to catalog', icon: '✅', color: 'text-teal-400' },
@@ -796,7 +796,7 @@ const TeacherDashboard = () => {
               { label: 'Estimated Revenue', value: `₹${courses.reduce((acc, c) => acc + (c.revenue || 0), 0)}`, desc: 'From successful payments', icon: '💰', color: 'text-success' },
               { label: 'Live Classes', value: liveSessions.length, desc: 'Scheduled streams', icon: '🎥', color: 'text-amber-400' }
             ].map((stat, idx) => (
-              <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden">
+              <div key={idx} className="bg-card border border-border rounded-2xl p-5 shadow card-hover relative overflow-hidden w-[200px] shrink-0 snap-start md:w-auto md:shrink">
                 <div className="absolute top-0 right-0 w-12 h-12 bg-white/5 rounded-bl-full flex items-center justify-center text-xs shrink-0 select-none">
                   {stat.icon}
                 </div>
@@ -980,7 +980,7 @@ const TeacherDashboard = () => {
                     </div>
                   </div>
 
-                  <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-teal-500 hover:from-primary-500 hover:to-teal-400 text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
+                  <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
                     Schedule Class
                   </button>
                 </form>

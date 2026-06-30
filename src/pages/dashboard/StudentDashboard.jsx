@@ -37,7 +37,7 @@ const StudentDashboard = () => {
 
   // Hardcoded Testimonials
   const testimonials = [
-    { text: "AuraLMS completely changed how I learn programming. The AI doubt assistant is like having a private tutor 24/7!", author: "Rohan Gupta", role: "Web Dev Student", rating: 5 },
+    { text: "LearnGen completely changed how I learn programming. The AI doubt assistant is like having a private tutor 24/7!", author: "Rohan Gupta", role: "Web Dev Student", rating: 5 },
     { text: "The live classes feel so personal and lag-free. Being able to interact directly with instructors in real-time is amazing.", author: "Neha Sharma", role: "Data Science Student", rating: 5 },
     { text: "Earned my React Certificate last week and just landed my first internship! Highly recommend this premium platform.", author: "Aman Verma", role: "Frontend Intern", rating: 5 }
   ];
@@ -677,7 +677,7 @@ const StudentDashboard = () => {
                               <style>
                                 body { background: #0c1222; color: #fff; font-family: sans-serif; text-align: center; padding: 50px; }
                                 .cert { border: 15px solid #111827; padding: 50px; background: #111827; max-width: 800px; margin: auto; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-                                h1 { font-size: 40px; color: #14b8a6; margin-bottom: 5px; }
+                                h1 { font-size: 40px; color: #3b82f6; margin-bottom: 5px; }
                                 h3 { font-size: 20px; color: #94a3b8; font-weight: normal; margin-top: 0; }
                                 .recipient { font-size: 28px; font-weight: bold; margin: 30px 0; border-bottom: 2px dashed #334155; display: inline-block; padding-bottom: 5px; }
                                 .details { color: #94a3b8; font-size: 14px; margin-top: 40px; }
@@ -685,10 +685,10 @@ const StudentDashboard = () => {
                             </head>
                             <body>
                               <div class="cert">
-                                <h1>AuraLMS</h1>
+                                <h1>LearnGen</h1>
                                 <h3>Certificate of Completion</h3>
                                 <p>This is to certify that</p>
-                                <div class="recipient">${user?.name || 'AuraLMS Learner'}</div>
+                                <div class="recipient">${user?.name || 'LearnGen Learner'}</div>
                                 <p>has successfully completed the syllabus for course</p>
                                 <h2>${enroll.course.title}</h2>
                                 <p class="details">Date: ${new Date().toLocaleDateString()} | Verification Code: CERT_${enroll.id}</p>
@@ -739,8 +739,8 @@ const StudentDashboard = () => {
 
       {/* Simplified Portal Footer */}
       <footer className="pt-10 border-t border-border/50 text-center text-[10px] text-text-muted space-y-2">
-        <p>© {new Date().getFullYear()} AuraLMS Student Environment. Designed for high fidelity and one-handed layouts.</p>
-        <p className="font-semibold text-teal-400">Streak Active • Live classrooms Connected • Doubt Solver Online</p>
+        <p>© {new Date().getFullYear()} LearnGen Student Environment. Designed for high fidelity and one-handed layouts.</p>
+        <p className="font-semibold text-primary-400">Streak Active • Live classrooms Connected • Doubt Solver Online</p>
       </footer>
 
     </div>

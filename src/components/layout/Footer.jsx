@@ -4,15 +4,19 @@ import { Link } from 'react-router-dom';
 const Footer = () => {
   return (
     <footer className="bg-card border-t border-border mt-auto">
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div className="max-w-7xl mx-auto px-6 pt-10 pb-8 md:py-12">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand */}
-          <div className="md:col-span-1">
+          <div className="col-span-2 md:col-span-1">
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center font-black text-white text-lg shadow-glow">
-                A
-              </div>
-              <span className="text-xl font-extrabold text-white">AuraLMS</span>
+              <img 
+                src="/logo-icon.jpg" 
+                alt="LearnGen Logo" 
+                className="w-9 h-9 rounded-xl object-cover shadow-glow" 
+              />
+              <span className="text-xl font-extrabold text-white">
+                Learn<span className="text-primary-light">Gen</span>
+              </span>
             </div>
             <p className="text-text-muted text-sm leading-relaxed">
               Premium online education platform empowering students and professionals with expert-led courses, live classes, and AI-powered learning.
@@ -49,7 +53,7 @@ const Footer = () => {
                 <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
-                <span>support@auralms.com</span>
+                <span>support@learngen.com</span>
               </li>
               <li className="text-text-muted text-sm flex items-center space-x-2">
                 <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -65,7 +69,7 @@ const Footer = () => {
         {/* Bottom Bar */}
         <div className="mt-10 pt-6 border-t border-border flex flex-col md:flex-row justify-between items-center">
           <p className="text-text-muted text-xs">
-            © {new Date().getFullYear()} AuraLMS. All rights reserved.
+            © {new Date().getFullYear()} LearnGen. All rights reserved.
           </p>
           <div className="flex items-center space-x-6 mt-4 md:mt-0">
             <span className="text-text-muted text-xs hover:text-slate-300 transition cursor-pointer">Privacy Policy</span>
