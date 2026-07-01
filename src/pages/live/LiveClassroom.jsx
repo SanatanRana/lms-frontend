@@ -104,7 +104,7 @@ export const LiveClassroom = () => {
         setParticipants(payload.participants || []);
         // If I am the Teacher, initiate call with the new peer
         if (isTeacher && rtcHandlersRef.current.initiateCall) {
-          rtcHandlersRef.current.initiateCall(payload.sessionId, payload.name, payload.role);
+          rtcHandlersRef.current.initiateCall(payload.wsSessionId, payload.name, payload.role);
         }
         break;
 
@@ -171,17 +171,10 @@ export const LiveClassroom = () => {
     }
   }, [isTeacher]);
 
-  const onConnectRef = useRef(null);
-
   // Connect to WS signaling
-  const { connect, disconnect, send: wsSend } = useWebSocket(
+  const { connect, disconnect, send: wsSend, isConnected: wsConnected } = useWebSocket(
     wsUrl,
-    onWebSocketMessage,
-    useCallback(() => {
-      if (onConnectRef.current) {
-        onConnectRef.current();
-      }
-    }, [])
+    onWebSocketMessage
   );
 
   // Initialize WebRTC logic
@@ -223,23 +216,19 @@ export const LiveClassroom = () => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  // Keep the JOIN_ROOM payload sender callback updated with latest state
+  // Send JOIN_ROOM payload when connection is established and sessionId is resolved
   useEffect(() => {
-    onConnectRef.current = () => {
-      if (!sessionIdRef.current) {
-        console.log('[Classroom] sessionId is not resolved yet. Postponing JOIN_ROOM...');
-        return;
-      }
-      console.log('[Classroom] WebSocket connection opened/reconnected. Sending JOIN_ROOM for session:', sessionIdRef.current);
-      wsSend('JOIN_ROOM', sessionIdRef.current, {
+    if (wsConnected && sessionId) {
+      console.log('[Classroom] WebSocket connection opened/reconnected. Sending JOIN_ROOM for session:', sessionId);
+      wsSend('JOIN_ROOM', sessionId, {
         name: myName,
         role: myRole,
         userId: localStorage.getItem('userId') ? parseInt(localStorage.getItem('userId')) : null,
         audioMuted: !joinParams.micEnabled,
         videoMuted: !joinParams.camEnabled
       });
-    };
-  }, [myName, myRole, wsSend, joinParams.micEnabled, joinParams.camEnabled]);
+    }
+  }, [wsConnected, sessionId, myName, myRole, wsSend, joinParams.micEnabled, joinParams.camEnabled]);
 
   // ── 2. Initialize Media Devices & Establish Socket ──
   useEffect(() => {
@@ -303,7 +292,7 @@ export const LiveClassroom = () => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
+  }, [localStream, loading]);
 
   // Scroll to bottom of chat
   useEffect(() => {
