@@ -291,6 +291,7 @@ export const LiveClassroom = () => {
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(e => console.log("Video auto-play policy might have blocked this:", e));
     }
   }, [localStream, loading]);
 

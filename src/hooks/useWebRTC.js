@@ -44,11 +44,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     try {
       // Teachers always publish both. Students join muted by default.
       const constraints = {
-        video: { 
-          width: { ideal: 1280 }, 
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 }
-        },
+        video: true,
         audio: true
       };
       
