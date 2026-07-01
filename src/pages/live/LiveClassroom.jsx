@@ -14,7 +14,6 @@ export const LiveClassroom = () => {
   const [sessionId, setSessionId] = useState(location.state?.sessionId || null);
   const [loading, setLoading] = useState(true);
   const [sessionDetails, setSessionDetails] = useState(null);
-  const [isMyChatDisabled, setIsMyChatDisabled] = useState(false);
 
   // States
   const [participants, setParticipants] = useState([]);
@@ -89,7 +88,6 @@ export const LiveClassroom = () => {
       case 'ROOM_JOINED':
         console.log('[Classroom] Room joined successfully. My WS ID:', payload.yourSessionId);
         setParticipants(payload.participants || []);
-        participantsRef.current = payload.participants || [];
         setChatMessages(payload.chatHistory || []);
         if (isTeacher && rtcHandlersRef.current.initiateCall) {
           payload.participants?.forEach(p => {
@@ -104,7 +102,6 @@ export const LiveClassroom = () => {
       case 'PARTICIPANT_JOINED':
         console.log('[Classroom] Participant joined:', payload.name);
         setParticipants(payload.participants || []);
-        participantsRef.current = payload.participants || [];
         // If I am the Teacher, initiate call with the new peer
         if (isTeacher && rtcHandlersRef.current.initiateCall) {
           rtcHandlersRef.current.initiateCall(payload.sessionId, payload.name, payload.role);
@@ -167,26 +164,6 @@ export const LiveClassroom = () => {
 
       case 'ERROR':
         console.error('[SignalingWS Error]', payload.message);
-        break;
-
-      case 'FORCE_MUTE':
-        if (payload.mediaType === 'audio' && rtcHandlersRef.current.forceMuteAudio) {
-          rtcHandlersRef.current.forceMuteAudio();
-        } else if (payload.mediaType === 'video' && rtcHandlersRef.current.forceMuteVideo) {
-          rtcHandlersRef.current.forceMuteVideo();
-        }
-        break;
-        
-      case 'CHAT_ACCESS_CHANGED':
-        setParticipants(prev => prev.map(p => {
-          if (p.sessionId === payload.targetId) {
-            return { ...p, chatDisabled: payload.disabled };
-          }
-          return p;
-        }));
-        if (payload.targetId === wsSessionIdRef.current) {
-          setIsMyChatDisabled(payload.disabled);
-        }
         break;
 
       default:
@@ -328,20 +305,12 @@ export const LiveClassroom = () => {
   // ── 3. Chat Form Submission ──
   const handleSendChat = (e) => {
     if (e) e.preventDefault();
-    if (!chatInput.trim() || isMyChatDisabled) return;
+    if (!chatInput.trim()) return;
 
     wsSend('CHAT_MESSAGE', sessionId, {
       message: chatInput.trim()
     });
     setChatInput('');
-  };
-
-  const handleForceMute = (targetId, mediaType) => {
-    wsSend('FORCE_MUTE', sessionId, { targetId, mediaType });
-  };
-
-  const handleToggleChatAccess = (targetId, currentDisabled) => {
-    wsSend('TOGGLE_CHAT_ACCESS', sessionId, { targetId, disabled: !currentDisabled });
   };
 
   // ── 4. Recording Functionality (Teacher-Only) ──
@@ -689,14 +658,12 @@ export const LiveClassroom = () => {
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder={isMyChatDisabled ? "Chat disabled by instructor" : "Send a message to class..."}
-                  disabled={isMyChatDisabled}
-                  className="w-full bg-slate-900 border border-white/10 rounded-xl pl-4 pr-10 py-3 text-slate-200 focus:border-primary-500 focus:outline-none transition text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  placeholder="Send a message to class..."
+                  className="w-full bg-slate-900 border border-white/10 rounded-xl pl-4 pr-10 py-3 text-slate-200 focus:border-primary-500 focus:outline-none transition text-xs"
                 />
                 <button
                   type="submit"
-                  disabled={isMyChatDisabled}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 w-7 h-7 rounded-lg bg-primary-600 hover:bg-primary-500 text-white flex items-center justify-center transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 w-7 h-7 rounded-lg bg-primary-600 hover:bg-primary-500 text-white flex items-center justify-center transition"
                 >
                   ▶
                 </button>
@@ -723,37 +690,8 @@ export const LiveClassroom = () => {
                     <p className="text-[10px] text-slate-500 font-medium capitalize">{person.role}</p>
                   </div>
                   <div className="ml-auto flex items-center gap-1.5">
-                    {isTeacher && person.role !== 'TEACHER' ? (
-                      <>
-                        <button 
-                          onClick={() => handleForceMute(person.sessionId, 'audio')}
-                          title="Force Mute Mic"
-                          className={`p-1.5 rounded bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 transition text-[10px] ${person.audioMuted ? 'text-rose-500' : 'text-slate-300'}`}
-                        >
-                          {person.audioMuted ? '🔇' : '🎤'}
-                        </button>
-                        <button 
-                          onClick={() => handleForceMute(person.sessionId, 'video')}
-                          title="Force Turn Off Camera"
-                          className={`p-1.5 rounded bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 transition text-[10px] ${person.videoMuted ? 'text-rose-500' : 'text-slate-300'}`}
-                        >
-                          {person.videoMuted ? '🚫' : '📹'}
-                        </button>
-                        <button 
-                          onClick={() => handleToggleChatAccess(person.sessionId, person.chatDisabled)}
-                          title={person.chatDisabled ? "Enable Chat" : "Disable Chat"}
-                          className={`px-2 py-1.5 rounded font-semibold bg-slate-800 transition text-[9px] uppercase ${person.chatDisabled ? 'text-rose-400 hover:bg-emerald-500/20 hover:text-emerald-400' : 'text-emerald-400 hover:bg-rose-500/20 hover:text-rose-400'}`}
-                        >
-                          Chat
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-xs">{person.audioMuted ? '🔇' : '🎤'}</span>
-                        <span className="text-xs">{person.videoMuted ? '🚫' : '📹'}</span>
-                        {person.chatDisabled && <span className="text-[10px] text-rose-500 font-bold ml-1" title="Chat Disabled">Chat 🚫</span>}
-                      </>
-                    )}
+                    <span className="text-xs">{person.audioMuted ? '🔇' : '🎤'}</span>
+                    <span className="text-xs">{person.videoMuted ? '🚫' : '📹'}</span>
                   </div>
                 </div>
               ))}
