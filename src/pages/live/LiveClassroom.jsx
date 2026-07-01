@@ -104,7 +104,7 @@ export const LiveClassroom = () => {
         setParticipants(payload.participants || []);
         // If I am the Teacher, initiate call with the new peer
         if (isTeacher && rtcHandlersRef.current.initiateCall) {
-          rtcHandlersRef.current.initiateCall(payload.wsSessionId, payload.name, payload.role);
+          rtcHandlersRef.current.initiateCall(payload.sessionId, payload.name, payload.role);
         }
         break;
 
