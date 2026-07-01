@@ -167,6 +167,7 @@ export const LiveClassroom = () => {
 
       case 'ERROR':
         console.error('[SignalingWS Error]', payload.message);
+        alert('Classroom Error: ' + payload.message);
         break;
 
       case 'FORCE_MUTE':
@@ -459,6 +460,34 @@ export const LiveClassroom = () => {
   const isTeacherMuted = teacherStreamObj 
     ? (participants.find(p => p.sessionId === teacherStreamObj[0])?.videoMuted ?? true)
     : true;
+
+  if (!wsConnected && !loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-outfit">
+        <div className="bg-surface-900/50 p-8 rounded-3xl border border-red-500/30 flex flex-col items-center max-w-md text-center">
+          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+            <span className="text-2xl">⚠️</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-3">Connection Lost</h2>
+          <p className="text-slate-400 mb-6">
+            We've lost connection to the live classroom. This could be due to a network issue, or you might not have access to this class.
+          </p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-primary-500 hover:bg-primary-600 text-white font-semibold py-3 px-6 rounded-xl transition duration-300 shadow-lg shadow-primary-500/25"
+          >
+            Reconnect
+          </button>
+          <button 
+            onClick={() => navigate('/dashboard')}
+            className="w-full mt-3 bg-slate-800 hover:bg-slate-700 text-white font-semibold py-3 px-6 rounded-xl transition duration-300"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col bg-surface-900 text-white overflow-hidden">
