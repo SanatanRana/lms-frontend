@@ -246,15 +246,50 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'audio', muted: nextState });
   }, [isAudioMuted, sessionId, wsSend]);
 
-  const toggleVideo = useCallback(() => {
+  const toggleVideo = useCallback(async () => {
     const nextState = !isVideoMuted;
+    
     if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach(track => {
-        track.enabled = !nextState;
-      });
+      const videoTracks = localStreamRef.current.getVideoTracks();
+      
+      if (videoTracks.length > 0) {
+        // Track exists, just toggle its enabled state
+        videoTracks.forEach(track => {
+          track.enabled = !nextState;
+        });
+        setIsVideoMuted(nextState);
+        wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'video', muted: nextState });
+      } else if (!nextState) {
+        // Next state is UNMUTED, but we have NO video tracks! (Due to initial fallback)
+        // We need to request camera access now.
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const newVideoTrack = videoStream.getVideoTracks()[0];
+          
+          localStreamRef.current.addTrack(newVideoTrack);
+          
+          // Replace/add video track in all active peer connections
+          Object.values(pcsRef.current).forEach(pc => {
+            const senders = pc.getSenders();
+            const sender = senders.find(s => s.track && s.track.kind === 'video');
+            if (sender) {
+              sender.replaceTrack(newVideoTrack);
+            } else {
+              pc.addTrack(newVideoTrack, localStreamRef.current);
+            }
+          });
+          
+          // Force React state update so localVideoRef binds to the updated stream
+          setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+          
+          setIsVideoMuted(false);
+          wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'video', muted: false });
+        } catch (err) {
+          console.error("Could not start camera on demand:", err);
+          alert("Could not start camera. Please check your browser permissions or ensure no other app is using it.");
+        }
+      }
     }
-    setIsVideoMuted(nextState);
-    wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'video', muted: nextState });
   }, [isVideoMuted, sessionId, wsSend]);
 
   const stopScreenShare = useCallback(() => {
