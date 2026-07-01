@@ -246,6 +246,28 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'audio', muted: nextState });
   }, [isAudioMuted, sessionId, wsSend]);
 
+  const forceMuteAudio = useCallback(() => {
+    if (!isAudioMuted && localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = false;
+      });
+      setIsAudioMuted(true);
+      wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'audio', muted: true });
+      alert("Your microphone was muted by the instructor.");
+    }
+  }, [isAudioMuted, sessionId, wsSend]);
+
+  const forceMuteVideo = useCallback(() => {
+    if (!isVideoMuted && localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = false;
+      });
+      setIsVideoMuted(true);
+      wsSend('MUTE_TOGGLE', sessionId, { mediaType: 'video', muted: true });
+      alert("Your camera was turned off by the instructor.");
+    }
+  }, [isVideoMuted, sessionId, wsSend]);
+
   const toggleVideo = useCallback(async () => {
     const nextState = !isVideoMuted;
     
@@ -385,6 +407,8 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     handleIceCandidate,
     toggleAudio,
     toggleVideo,
+    forceMuteAudio,
+    forceMuteVideo,
     startScreenShare,
     stopScreenShare,
     removePeer,
