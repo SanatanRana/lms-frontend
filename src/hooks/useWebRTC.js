@@ -59,7 +59,11 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       // Teachers always publish both. Students join muted by default.
       const constraints = {
         video: true,
-        audio: true
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
       };
 
       const stream = await getUserMediaWithTimeout(constraints, 5000);
@@ -78,7 +82,13 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       console.error('Error accessing media devices:', err);
       // Fallback if no camera found
       try {
-        const stream = await getUserMediaWithTimeout({ audio: true }, 3000);
+        const stream = await getUserMediaWithTimeout({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        }, 3000);
         localStreamRef.current = stream;
         setLocalStream(stream);
 

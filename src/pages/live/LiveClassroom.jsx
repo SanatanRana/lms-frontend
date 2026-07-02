@@ -326,10 +326,12 @@ export const LiveClassroom = () => {
   // Bind local video stream once ready
   useEffect(() => {
     if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+      if (localVideoRef.current.srcObject !== localStream) {
+        localVideoRef.current.srcObject = localStream;
+      }
       localVideoRef.current.play().catch(e => console.log("Video auto-play policy might have blocked this:", e));
     }
-  }, [localStream, loading]);
+  }, [localStream, loading, isVideoMuted]);
 
   // Scroll to bottom of chat
   useEffect(() => {
