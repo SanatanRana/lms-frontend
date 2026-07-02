@@ -117,6 +117,7 @@ export const LiveJoinGate = () => {
       if (isAuthenticated) {
         // Logged in user: Join directly
         stopPreview();
+        await new Promise(resolve => setTimeout(resolve, 500));
         navigate(`/live/classroom/${roomToken}`, {
           state: {
             sessionId: sessionInfo.sessionId,
@@ -143,6 +144,7 @@ export const LiveJoinGate = () => {
 
         if (response.data.success) {
           stopPreview();
+          await new Promise(resolve => setTimeout(resolve, 500));
           // Store guest session temporary identifier or name
           sessionStorage.setItem('guestName', guestName.trim());
           navigate(`/live/classroom/${roomToken}`, {
@@ -298,7 +300,7 @@ export const LiveJoinGate = () => {
                     disabled={isJoining}
                     className="w-full py-4 rounded-xl bg-primary-600 hover:bg-primary-500 font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-primary-500/10 disabled:opacity-50"
                   >
-                    {isJoining ? 'Connecting...' : 'Enter Classroom Now'}
+                    {isJoining ? 'Connecting...' : 'Join Class'}
                   </button>
                 </div>
               ) : (
@@ -322,7 +324,7 @@ export const LiveJoinGate = () => {
                         disabled={isJoining}
                         className="w-full py-4 rounded-xl bg-primary-600 hover:bg-primary-500 font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-primary-500/10 disabled:opacity-50"
                       >
-                        {isJoining ? 'Connecting...' : 'Join Classroom as Guest'}
+                        {isJoining ? 'Connecting...' : 'Join Class as Guest'}
                       </button>
                       <div className="text-center text-xs text-slate-500">
                         Have an account? <span onClick={() => navigate('/login')} className="text-primary-400 hover:underline cursor-pointer">Log In</span> to log attendance automatically.

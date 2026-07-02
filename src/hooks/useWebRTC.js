@@ -39,23 +39,37 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
   const screenStreamRef = useRef(null);
   const candidateQueuesRef = useRef({});
 
+  const getUserMediaWithTimeout = useCallback((constraints, timeoutMs = 5000) => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return Promise.reject(new Error('Media devices or getUserMedia not supported in this browser environment.'));
+    }
+    return Promise.race([
+      navigator.mediaDevices.getUserMedia(constraints),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('WebRTC media device acquisition timed out')), timeoutMs)
+      )
+    ]);
+  }, []);
+
   // Initialize camera and microphone
   const initLocalStream = useCallback(async (initialMicEnabled = false, initialCamEnabled = false) => {
+    // Wait briefly for OS/browser to release any previous camera/mic capture session (e.g. from the lobby preview)
+    await new Promise(resolve => setTimeout(resolve, 300));
     try {
       // Teachers always publish both. Students join muted by default.
       const constraints = {
         video: { width: 1280, height: 720, frameRate: 30 },
         audio: true
       };
-      
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+      const stream = await getUserMediaWithTimeout(constraints, 5000);
       localStreamRef.current = stream;
       setLocalStream(stream);
 
       // Apply initial mic/cam preferences
       stream.getAudioTracks().forEach(track => { track.enabled = initialMicEnabled; });
       stream.getVideoTracks().forEach(track => { track.enabled = initialCamEnabled; });
-      
+
       setIsAudioMuted(!initialMicEnabled);
       setIsVideoMuted(!initialCamEnabled);
 
@@ -64,21 +78,21 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       console.error('Error accessing media devices:', err);
       // Fallback if no camera found
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await getUserMediaWithTimeout({ audio: true }, 3000);
         localStreamRef.current = stream;
         setLocalStream(stream);
-        
+
         stream.getAudioTracks().forEach(track => { track.enabled = initialMicEnabled; });
         setIsAudioMuted(!initialMicEnabled);
         setIsVideoMuted(true);
-        
+
         return stream;
       } catch (err2) {
         console.error('Microphone access also failed:', err2);
       }
     }
     return null;
-  }, []);
+  }, [getUserMediaWithTimeout]);
 
   const removePeer = useCallback((targetId) => {
     if (pcsRef.current[targetId]) {
@@ -150,7 +164,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       const pc = createPC(targetId, localStreamRef.current, participantName, participantRole);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      
+
       wsSend('OFFER', sessionId, {
         targetId,
         sdp: offer.sdp
@@ -165,7 +179,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
     try {
       const peer = participants?.find(p => p.sessionId === senderId);
       const pc = createPC(senderId, localStreamRef.current, peer?.name, peer?.role);
-      
+
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp }));
 
       // Process queued candidates
@@ -288,7 +302,7 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       wsSend('SCREEN_SHARE', sessionId, { sharing: true });
 
       const videoTrack = stream.getVideoTracks()[0];
-      
+
       // Replace video track in all active peer connections
       Object.values(pcsRef.current).forEach(pc => {
         const senders = pc.getSenders();
@@ -317,14 +331,14 @@ export const useWebRTC = (sessionId, myWsId, role, wsSend) => {
       screenStreamRef.current.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
     }
-    
+
     // Close peer connections
     Object.keys(pcsRef.current).forEach(key => {
       pcsRef.current[key].close();
     });
     pcsRef.current = {};
     candidateQueuesRef.current = {};
-    
+
     setLocalStream(null);
     setRemoteStreams({});
     setIsScreenSharing(false);

@@ -20,6 +20,11 @@ const StudentDashboard = () => {
   const [searchParams] = useSearchParams();
   const activeTab = searchParams.get('tab') || 'home';
 
+  // Live class search & filtering state
+  const [liveSearchQuery, setLiveSearchQuery] = useState('');
+  const [liveStatusFilter, setLiveStatusFilter] = useState('ALL'); // 'ALL' | 'LIVE' | 'SCHEDULED'
+  const [selectedLiveCourse, setSelectedLiveCourse] = useState('ALL');
+
   const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
 
   // Streak & Gamification State
@@ -102,19 +107,11 @@ const StudentDashboard = () => {
   const handleJoinLive = async (sessionId, session) => {
     try {
       const joinResp = await api.post(`/live/${sessionId}/join`);
-      const { roomToken } = joinResp.data.data;
-      navigate(`/live/classroom/${roomToken}`, {
-        state: {
-          sessionId: session.id,
-          micEnabled: true,
-          camEnabled: true,
-          role: 'STUDENT',
-          name: user?.name || 'Student',
-          title: session.title,
-          courseName: session.course?.title || 'Live Classroom',
-          teacherName: session.teacher?.name || 'Instructor'
-        }
-      });
+      const roomToken = joinResp.data.data.liveSession?.roomToken;
+      if (!roomToken) {
+        throw new Error("Room token not returned in response");
+      }
+      navigate(`/live/join/${roomToken}`);
     } catch (error) {
       console.error("Failed to join live session:", error);
       showToast('error', 'Failed to join live classroom. Try again.');
@@ -141,7 +138,7 @@ const StudentDashboard = () => {
               <div className="h-6 skeleton rounded-lg w-1/3"></div>
               <div className="h-20 skeleton rounded-2xl w-full"></div>
             </div>
-            
+
             <div className="space-y-4">
               <div className="h-6 skeleton rounded-lg w-1/4"></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -216,7 +213,7 @@ const StudentDashboard = () => {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 py-4 md:py-6 animate-fade-in pb-16">
-      
+
       {/* Toast Alert */}
       {toast.show && (
         <Toast type={toast.type} message={toast.message} onClose={() => setToast({ show: false, message: '', type: 'success' })} />
@@ -240,11 +237,10 @@ const StudentDashboard = () => {
                 navigate(`/dashboard?tab=${tab.id}`);
               }
             }}
-            className={`pb-3 text-xs font-bold border-b-2 transition relative flex items-center space-x-1.5 cursor-pointer ${
-              activeTab === tab.id 
-                ? 'border-primary-600 text-primary-400' 
+            className={`pb-3 text-xs font-bold border-b-2 transition relative flex items-center space-x-1.5 cursor-pointer ${activeTab === tab.id
+                ? 'border-primary-600 text-primary-400'
                 : 'border-transparent text-text-muted hover:text-white'
-            }`}
+              }`}
           >
             <span>{tab.label}</span>
             {tab.count !== undefined && (
@@ -258,7 +254,7 @@ const StudentDashboard = () => {
 
       {/* Tab Panels */}
       <div className="space-y-6">
-        
+
         {/* ══════════════════ TAB: HOME ══════════════════ */}
         {activeTab === 'home' && (
           <>
@@ -287,101 +283,92 @@ const StudentDashboard = () => {
               </div>
             </div>
 
-            {/* Resume Last Active HUD */}
-            {lastActiveCourse && (
-              <div className="bg-gradient-to-r from-teal-900/10 to-indigo-900/10 border border-border rounded-3xl p-6 relative overflow-hidden shadow-lg">
-                <div className="absolute top-0 right-0 w-56 h-full bg-gradient-to-l from-primary-600/5 to-transparent"></div>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative">
-                  <div className="space-y-3 flex-grow">
-                    <span className="text-[10px] bg-teal-500/10 border border-teal-500/20 text-teal-400 font-black px-2.5 py-0.5 rounded uppercase tracking-wider">
-                      Resume Course
-                    </span>
-                    <h3 className="text-lg md:text-xl font-extrabold text-white leading-snug">{lastActiveCourse.course.title}</h3>
-                    <p className="text-xs text-text-muted line-clamp-1">{lastActiveCourse.course.description}</p>
-                    <div className="max-w-md">
-                      <div className="flex justify-between items-center text-[10px] font-extrabold text-slate-400 mb-1">
-                        <span>Current Progress</span>
-                        <span className="text-teal-400">{lastActiveCourse.progressPercent}%</span>
-                      </div>
-                      <div className="w-full bg-surface-700 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-gradient-to-r from-teal-500 to-primary-600 h-full rounded-full" style={{ width: `${lastActiveCourse.progressPercent}%` }}></div>
-                      </div>
-                    </div>
+            {/* My Purchased Courses (Horizontal Scroll / Swipable) */}
+            {enrollments.length > 0 ? (
+              <section className="space-y-4 pt-1">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
+                      <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-teal-500 to-indigo-400"></span>
+                      <span>My Purchased Courses</span>
+                    </h3>
+                    <p className="text-[11px] text-text-muted mt-1">
+                      Swipe left/right to browse your active learning batches.
+                    </p>
                   </div>
-                  <button 
-                    onClick={() => {
-                      localStorage.setItem(`${userPrefix}_last_active_course_id`, lastActiveCourse.course.id.toString());
-                      navigate(`/course/${lastActiveCourse.course.id}/learn`);
-                    }}
-                    className="bg-gradient-to-r from-teal-500 to-primary-600 hover:from-teal-400 hover:to-primary-500 text-white font-extrabold px-6 py-3.5 rounded-xl shadow-lg shadow-teal-500/10 w-full md:w-auto text-center transition select-none cursor-pointer hover:scale-102"
-                  >
-                    Resume Lesson 🚀
-                  </button>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider select-none animate-pulse">
+                    Swipe ↔
+                  </span>
                 </div>
-              </div>
-            )}
 
-            {/* Today's Schedule (Live Classrooms) */}
-            {liveSessions.length > 0 && (
-              <section className="space-y-4">
-                <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
-                  <span className="w-1.5 h-4 rounded bg-gradient-to-b from-rose-500 to-red-400"></span>
-                  <span>Today's Classroom Schedule</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {liveSessions.map(session => {
-                    const isLive = session.status === 'LIVE';
-                    return (
-                      <div 
-                        key={session.id} 
-                        className={`border rounded-2xl p-4 flex flex-col justify-between transition-all bg-card/45 duration-300 relative overflow-hidden ${
-                          isLive ? 'border-error/35 bg-error/5' : 'border-border'
-                        }`}
-                      >
-                        {isLive && (
-                          <div className="absolute top-0 right-0 bg-error text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-bl-xl animate-pulse">
-                            Live Now
+                <div className="flex space-x-5 overflow-x-auto pb-4 scrollbar-none snap-x snap-mandatory">
+                  {enrollments.map(enroll => (
+                    <div
+                      key={enroll.id}
+                      className="w-[280px] md:w-[320px] shrink-0 snap-start bg-card border border-border hover:border-slate-700/50 rounded-2xl overflow-hidden shadow transition flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="relative h-32 bg-slate-900 border-b border-border overflow-hidden">
+                          <img
+                            src={enroll.course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"}
+                            alt={enroll.course.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm border border-white/10 px-2 py-0.5 rounded text-[8px] font-black text-primary-400 uppercase tracking-widest">
+                            {enroll.course.category || "General"}
                           </div>
-                        )}
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">
-                            {session.course?.title || 'Live Classroom'}
-                          </span>
-                          <h4 className="text-white font-bold text-sm leading-snug">{session.title}</h4>
-                          <div className="flex items-center space-x-1.5 text-text-muted text-[10px] mt-1.5">
-                            <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>
-                              {new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div className="p-4 space-y-1.5">
+                          <h4 className="text-white font-bold text-xs line-clamp-1">{enroll.course.title}</h4>
+                          <p className="text-text-muted text-[10px] line-clamp-2 leading-relaxed">{enroll.course.description}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 pt-0 space-y-3.5">
+                        <div>
+                          <div className="flex justify-between items-center text-[9px] font-bold text-slate-455 mb-1">
+                            <span>Completed</span>
+                            <span className={enroll.progressPercent >= 100 ? 'text-emerald-400' : 'text-teal-405'}>
+                              {enroll.progressPercent}%
                             </span>
                           </div>
-                        </div>
-                        <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center font-black text-white text-[9px]">
-                              {getInitials(session.teacher?.name || 'TR')}
-                            </div>
-                            <span className="text-[10px] text-slate-300 font-medium">{session.teacher?.name || 'Instructor'}</span>
+                          <div className="w-full bg-surface-700 h-1 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${enroll.progressPercent >= 100
+                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                                  : 'bg-gradient-to-r from-primary-500 to-teal-400'
+                                }`}
+                              style={{ width: `${enroll.progressPercent}%` }}
+                            ></div>
                           </div>
-                          <button
-                            onClick={() => handleJoinLive(session.id, session)}
-                            className={`text-[10px] font-black px-4 py-2 rounded-xl transition ${
-                              isLive 
-                                ? 'bg-error hover:bg-error/95 text-white shadow shadow-error/15' 
-                                : 'bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500'
-                            }`}
-                          >
-                            {isLive ? 'Join Lecture' : 'Enter Lobby'}
-                          </button>
                         </div>
+                        <Link
+                          to={`/course/${enroll.course.id}/learn`}
+                          onClick={() => localStorage.setItem(`${userPrefix}_last_active_course_id`, enroll.course.id.toString())}
+                          className="w-full text-center block bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 py-2.5 rounded-xl text-[10px] font-black tracking-wide uppercase transition select-none cursor-pointer"
+                        >
+                          {enroll.progressPercent >= 100 ? 'Review Lectures' : 'Resume Lesson 🚀'}
+                        </Link>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               </section>
+            ) : (
+              <div className="bg-gradient-to-r from-teal-900/10 to-indigo-900/10 border border-border rounded-3xl p-8 text-center space-y-3 shadow-lg">
+                <span className="text-3xl block">🎓</span>
+                <h3 className="text-white font-extrabold text-sm">Start Your Learning Journey</h3>
+                <p className="text-xs text-text-muted max-w-sm mx-auto">
+                  You are not enrolled in any batches yet. Discover our top recommended courses below and enroll to get started!
+                </p>
+                <button
+                  onClick={() => navigate('/')}
+                  className="bg-primary hover:bg-primary-light text-white text-[10px] font-black uppercase px-5 py-2.5 rounded-xl transition cursor-pointer"
+                >
+                  Explore Batches
+                </button>
+              </div>
             )}
-
             {/* Recommended for You */}
             {recommendations.length > 0 && (
               <section className="space-y-6 pt-6 border-t border-border">
@@ -408,14 +395,14 @@ const StudentDashboard = () => {
                     const ratingVal = '4.9';
                     const studentsVal = 180;
                     return (
-                      <div 
+                      <div
                         key={course.id}
                         className="bg-card border border-border hover:border-slate-700/50 rounded-2xl overflow-hidden shadow transition flex flex-col justify-between card-hover group"
                       >
                         <div>
                           <div className="relative h-40 bg-slate-900 overflow-hidden border-b border-border">
-                            <img 
-                              src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+                            <img
+                              src={course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"}
                               alt={course.title}
                               className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                             />
@@ -447,8 +434,8 @@ const StudentDashboard = () => {
                             </div>
                             <span className="text-[9px] text-teal-400 font-semibold font-bold">Recommended</span>
                           </div>
-                          <Link 
-                            to={`/course/${course.id}`} 
+                          <Link
+                            to={`/course/${course.id}`}
                             className="w-full text-center block bg-primary hover:bg-primary-light text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition"
                           >
                             View Details
@@ -471,11 +458,10 @@ const StudentDashboard = () => {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition whitespace-nowrap select-none cursor-pointer border ${
-                    selectedCategory === cat
+                  className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition whitespace-nowrap select-none cursor-pointer border ${selectedCategory === cat
                       ? 'bg-primary border-primary text-white shadow'
                       : 'bg-background border-border text-slate-400 hover:text-white'
-                  }`}
+                    }`}
                 >
                   {cat === 'ALL' ? '💻 All Subjects' : cat}
                 </button>
@@ -488,7 +474,7 @@ const StudentDashboard = () => {
                   <span className="text-5xl">📖</span>
                   <p className="text-white font-bold mt-4 text-sm">No enrolled courses in this category</p>
                   <p className="text-xs text-text-muted mt-1 mb-4">Explore the course catalog to start learning!</p>
-                  <button 
+                  <button
                     onClick={() => navigate('/')}
                     className="bg-primary hover:bg-primary-light text-white text-xs font-bold px-4 py-2 rounded-xl"
                   >
@@ -498,14 +484,14 @@ const StudentDashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {filteredMyCourses.map(enroll => (
-                    <div 
+                    <div
                       key={enroll.id}
                       className="bg-card border border-border hover:border-slate-700/50 rounded-2xl overflow-hidden shadow transition flex flex-col justify-between card-hover"
                     >
                       <div>
                         <div className="relative h-40 bg-slate-900 border-b border-border overflow-hidden">
-                          <img 
-                            src={enroll.course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"} 
+                          <img
+                            src={enroll.course.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800"}
                             alt={enroll.course.title}
                             className="w-full h-full object-cover"
                           />
@@ -527,17 +513,16 @@ const StudentDashboard = () => {
                             </span>
                           </div>
                           <div className="w-full bg-surface-700 h-1.5 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-300 ${
-                                enroll.progressPercent >= 100 
-                                  ? 'bg-gradient-to-r from-success to-emerald-400' 
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${enroll.progressPercent >= 100
+                                  ? 'bg-gradient-to-r from-success to-emerald-400'
                                   : 'bg-gradient-to-r from-primary-500 to-teal-400'
-                              }`}
+                                }`}
                               style={{ width: `${enroll.progressPercent}%` }}
                             ></div>
                           </div>
                         </div>
-                        <Link 
+                        <Link
                           to={`/course/${enroll.course.id}/learn`}
                           onClick={() => localStorage.setItem(`${userPrefix}_last_active_course_id`, enroll.course.id.toString())}
                           className="w-full text-center block bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 py-2.5 rounded-xl text-[10px] font-black tracking-wide uppercase transition select-none cursor-pointer"
@@ -554,69 +539,244 @@ const StudentDashboard = () => {
         )}
 
         {/* ══════════════════ TAB: LIVE CLASSES ══════════════════ */}
-        {activeTab === 'live' && (
-          <div>
-            {liveSessions.length === 0 ? (
-              <div className="text-center py-16 bg-card border border-border rounded-2xl">
-                <span className="text-5xl">📹</span>
-                <p className="text-white font-bold mt-4 text-sm">No Live Classes Scheduled Today</p>
-                <p className="text-xs text-text-muted mt-1">Check back later for updates or announcements.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {liveSessions.map(session => {
-                  const isLive = session.status === 'LIVE';
-                  return (
-                    <div 
-                      key={session.id} 
-                      className={`border rounded-2xl p-5 flex flex-col justify-between transition-all bg-card/45 duration-300 relative overflow-hidden ${
-                        isLive ? 'border-error/35 bg-error/5' : 'border-border'
-                      }`}
-                    >
-                      {isLive && (
-                        <div className="absolute top-0 right-0 bg-error text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-bl-xl animate-pulse">
-                          Live Now
-                        </div>
-                      )}
-                      <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">
-                          {session.course?.title || 'Live Classroom'}
-                        </span>
-                        <h4 className="text-white font-bold text-sm leading-snug">{session.title}</h4>
-                        <div className="flex items-center space-x-1.5 text-text-muted text-[10px] mt-1.5">
-                          <svg className="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>
-                            {new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center font-black text-white text-[9px]">
-                            {getInitials(session.teacher?.name || 'TR')}
-                          </div>
-                          <span className="text-[10px] text-slate-300 font-medium">{session.teacher?.name || 'Instructor'}</span>
-                        </div>
+        {activeTab === 'live' && (() => {
+          const uniqueCoursesInSessions = Array.from(
+            new Map(
+              liveSessions
+                .filter(s => s.course)
+                .map(s => [s.course.id, s.course])
+            ).values()
+          );
+
+          const filteredLiveSessions = liveSessions.filter(session => {
+            const matchesSearch = session.title.toLowerCase().includes(liveSearchQuery.toLowerCase()) ||
+              (session.course?.title || '').toLowerCase().includes(liveSearchQuery.toLowerCase());
+            if (!matchesSearch) return false;
+
+            const matchesCourse = selectedLiveCourse === 'ALL' || session.course?.id?.toString() === selectedLiveCourse.toString();
+            if (!matchesCourse) return false;
+
+            const isPast = new Date(session.endTime || session.startTime) < new Date();
+            
+            if (liveStatusFilter === 'ALL') {
+              return session.status === 'LIVE' || (session.status === 'SCHEDULED' && !isPast);
+            }
+            if (liveStatusFilter === 'LIVE') {
+              return session.status === 'LIVE';
+            }
+            if (liveStatusFilter === 'SCHEDULED') {
+              return session.status === 'SCHEDULED' && !isPast;
+            }
+            return false;
+          });
+
+          // Sort sessions by start time
+          const sortedLiveSessions = [...filteredLiveSessions].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+          // Group by date
+          const groupSessionsByDate = (sessions) => {
+            const groups = {};
+            sessions.forEach(s => {
+              const d = new Date(s.startTime);
+              const todayStr = new Date().toDateString();
+              const tomorrowStr = new Date(Date.now() + 86400000).toDateString();
+              const sessionDateStr = d.toDateString();
+              
+              let groupKey = sessionDateStr;
+              if (sessionDateStr === todayStr) {
+                groupKey = 'Today';
+              } else if (sessionDateStr === tomorrowStr) {
+                groupKey = 'Tomorrow';
+              } else {
+                groupKey = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+              }
+              
+              if (!groups[groupKey]) {
+                groups[groupKey] = [];
+              }
+              groups[groupKey].push(s);
+            });
+            return groups;
+          };
+
+          const sessionGroups = groupSessionsByDate(sortedLiveSessions);
+          const groupKeys = Object.keys(sessionGroups);
+
+          return (
+            <div className="space-y-6">
+              {/* Controls bar */}
+              <div className="bg-card border border-border p-5 rounded-3xl space-y-4 shadow-md">
+                {/* Search & Status Filters */}
+                <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                  <div className="relative flex-1 max-w-md">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-slate-500 text-sm">
+                      🔍
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Search live classes..."
+                      value={liveSearchQuery}
+                      onChange={(e) => setLiveSearchQuery(e.target.value)}
+                      className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary-500"
+                    />
+                  </div>
+
+                  <div className="flex space-x-1.5 self-start md:self-auto shrink-0 bg-background/50 border border-border p-1 rounded-xl">
+                    {[
+                      { id: 'ALL', label: 'All Classes' },
+                      { id: 'LIVE', label: '🔴 Live Now' },
+                      { id: 'SCHEDULED', label: '📅 Upcoming' }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setLiveStatusFilter(tab.id)}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition whitespace-nowrap cursor-pointer select-none ${
+                          liveStatusFilter === tab.id
+                            ? 'bg-primary text-white shadow'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Course Category Badge Filter (Horizontal scroll) */}
+                {uniqueCoursesInSessions.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Filter by enrolled course</span>
+                    <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLiveCourse('ALL')}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition whitespace-nowrap select-none cursor-pointer border-border ${
+                          selectedLiveCourse === 'ALL'
+                            ? 'bg-teal-500 border-teal-500 text-white shadow'
+                            : 'bg-background text-slate-450 hover:text-white'
+                        }`}
+                      >
+                        All Courses
+                      </button>
+                      {uniqueCoursesInSessions.map(course => (
                         <button
-                          onClick={() => handleJoinLive(session.id, session)}
-                          className={`text-[10px] font-black px-4 py-2 rounded-xl transition ${
-                            isLive 
-                              ? 'bg-error hover:bg-error/95 text-white shadow shadow-error/15' 
-                              : 'bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500'
+                          key={course.id}
+                          type="button"
+                          onClick={() => setSelectedLiveCourse(course.id)}
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition whitespace-nowrap select-none cursor-pointer border-border ${
+                            selectedLiveCourse.toString() === course.id.toString()
+                              ? 'bg-teal-500 border-teal-500 text-white shadow'
+                              : 'bg-background text-slate-450 hover:text-white'
                           }`}
                         >
-                          {isLive ? 'Join Lecture' : 'Enter Lobby'}
+                          {course.title}
                         </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sessions List */}
+              {liveSessions.length === 0 ? (
+                <div className="text-center py-16 bg-card border border-border rounded-2xl">
+                  <span className="text-5xl">📹</span>
+                  <p className="text-white font-bold mt-4 text-sm">No Live Classes Scheduled</p>
+                  <p className="text-xs text-text-muted mt-1">Check back later for updates or announcements.</p>
+                </div>
+              ) : filteredLiveSessions.length === 0 ? (
+                <div className="text-center py-16 bg-card border border-border rounded-2xl">
+                  <span className="text-5xl">🔍</span>
+                  <p className="text-white font-bold mt-4 text-sm">No live classes match your filters</p>
+                  <p className="text-xs text-text-muted mt-1">Try adjusting your search query or filters.</p>
+                </div>
+              ) : (
+                <div className="space-y-8 relative before:absolute before:inset-y-0 before:left-3 md:before:left-4 before:w-0.5 before:bg-border/20 before:pointer-events-none">
+                  {groupKeys.map(dateKey => (
+                    <div key={dateKey} className="space-y-4 relative">
+                      {/* Timeline Header Badge */}
+                      <div className="flex items-center space-x-3.5 z-10 relative">
+                        <div className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-card border-2 border-border flex items-center justify-center text-[10px] text-primary-400 font-bold shrink-0 shadow-lg select-none">
+                          📅
+                        </div>
+                        <h4 className="text-white font-extrabold text-xs tracking-wide uppercase bg-surface-900 pr-4">
+                          {dateKey}
+                        </h4>
+                      </div>
+
+                      {/* Sessions under this date */}
+                      <div className="pl-9 md:pl-12 grid grid-cols-1 md:grid-cols-2 gap-5">
+                        {sessionGroups[dateKey].map(session => {
+                          const isLive = session.status === 'LIVE';
+                          return (
+                            <div
+                              key={session.id}
+                              className={`border rounded-2xl p-5 flex flex-col justify-between transition-all bg-card/45 duration-300 relative overflow-hidden group ${
+                                isLive
+                                  ? 'border-rose-500/35 bg-rose-500/5 shadow-lg shadow-rose-500/5'
+                                  : 'border-border hover:border-slate-700/50 card-hover'
+                              }`}
+                              style={{
+                                borderLeftWidth: '4px',
+                                borderLeftColor: isLive ? 'var(--color-error)' : 'var(--color-primary-500)'
+                              }}
+                            >
+                              {isLive && (
+                                <div className="absolute top-0 right-0 bg-error text-white text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-bl-xl animate-pulse flex items-center space-x-1">
+                                  <span className="w-1.5 h-1.5 bg-white rounded-full inline-block animate-ping"></span>
+                                  <span>Live Now</span>
+                                </div>
+                              )}
+                              <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-[8px] bg-primary-600/10 text-primary-400 border border-primary-500/10 px-2 py-0.5 rounded font-black uppercase tracking-wider block truncate max-w-[160px]">
+                                    {session.course?.title || 'Live Classroom'}
+                                  </span>
+                                </div>
+                                <h4 className="text-white font-black text-sm group-hover:text-primary-400 transition-colors leading-snug line-clamp-1">
+                                  {session.title}
+                                </h4>
+                                <div className="flex items-center space-x-1.5 text-text-muted text-[10px] pt-0.5">
+                                  <svg className="w-3.5 h-3.5 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className="font-semibold text-slate-400">
+                                    {new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 gap-2">
+                                <div className="flex items-center space-x-2 min-w-0">
+                                  <div className="w-6 h-6 rounded-full bg-slate-700/80 border border-border flex items-center justify-center font-black text-white text-[9px] shrink-0">
+                                    {getInitials(session.teacher?.name || 'TR')}
+                                  </div>
+                                  <span className="text-[10px] text-slate-300 font-bold truncate leading-none">
+                                    {session.teacher?.name || 'Instructor'}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => handleJoinLive(session.id, session)}
+                                  className={`text-[9px] font-black px-4 py-2 rounded-xl transition cursor-pointer select-none shrink-0 tracking-wide uppercase ${
+                                    isLive
+                                      ? 'bg-error hover:bg-error/95 text-white shadow-md shadow-error/15 hover:scale-102'
+                                      : 'bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 hover:scale-102'
+                                  }`}
+                                >
+                                  {isLive ? 'Join Lecture' : 'Enter Lobby'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ══════════════════ TAB: CERTIFICATES ══════════════════ */}
         {activeTab === 'certificates' && (
@@ -632,7 +792,7 @@ const StudentDashboard = () => {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {completedCourses.map(enroll => (
-                  <div 
+                  <div
                     key={enroll.id}
                     className="bg-gradient-to-br from-card to-background border-2 border-amber-500/20 p-5 rounded-2xl shadow-xl flex flex-col justify-between"
                   >
@@ -648,7 +808,7 @@ const StudentDashboard = () => {
                         Successfully completed on {new Date(enroll.enrolledAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <button 
+                    <button
                       onClick={() => {
                         const win = window.open("", "_blank");
                         win.document.write(`
@@ -693,21 +853,19 @@ const StudentDashboard = () => {
         {activeTab === 'achievements' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {achievements.map(ach => (
-              <div 
+              <div
                 key={ach.id}
-                className={`p-4.5 rounded-2xl border transition duration-300 flex items-center space-x-4 bg-card/65 ${
-                  ach.unlocked 
-                    ? 'border-teal-500/25 bg-teal-950/5' 
+                className={`p-4.5 rounded-2xl border transition duration-300 flex items-center space-x-4 bg-card/65 ${ach.unlocked
+                    ? 'border-teal-500/25 bg-teal-950/5'
                     : 'border-border opacity-50 grayscale'
-                }`}
+                  }`}
               >
                 <span className="text-3xl">{ach.icon}</span>
                 <div>
                   <h4 className="text-white font-extrabold text-xs">{ach.title}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">{ach.desc}</p>
-                  <span className={`text-[8px] font-black uppercase mt-1.5 block tracking-widest ${
-                    ach.unlocked ? 'text-teal-400' : 'text-slate-500'
-                  }`}>
+                  <span className={`text-[8px] font-black uppercase mt-1.5 block tracking-widest ${ach.unlocked ? 'text-teal-400' : 'text-slate-500'
+                    }`}>
                     {ach.unlocked ? 'Unlocked ✓' : 'Locked'}
                   </span>
                 </div>

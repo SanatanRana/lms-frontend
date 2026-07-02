@@ -4,7 +4,22 @@ import api from '../../services/api';
 import Toast from '../../components/common/Toast';
 import { AuthContext } from '../../context/AuthContext';
 
+const getMinDateTime = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
 
+const toLocalDatetimeString = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const tzoffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - tzoffset).toISOString().slice(0, 16);
+};
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
@@ -17,6 +32,10 @@ const TeacherDashboard = () => {
   const [courses, setCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Live class search & filtering state
+  const [liveSearchQuery, setLiveSearchQuery] = useState('');
+  const [liveFilter, setLiveFilter] = useState('ALL');
 
   // Course Edit & Actions
   const [courseFilterTab, setCourseFilterTab] = useState('active'); // 'active' | 'archived'
@@ -35,7 +54,7 @@ const TeacherDashboard = () => {
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [sections, setSections] = useState([]);
   const [newSectionTitle, setNewSectionTitle] = useState('');
-  
+
   // Lessons
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [lessonForm, setLessonForm] = useState({ title: '', description: '', videoUrl: '' });
@@ -86,6 +105,7 @@ const TeacherDashboard = () => {
   const [editingSession, setEditingSession] = useState(null);
 
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   // eslint-disable-next-line no-unused-vars
   const [uploadingResource, setUploadingResource] = useState(false);
   const [notification, setNotification] = useState({ type: '', msg: '' });
@@ -289,6 +309,8 @@ const TeacherDashboard = () => {
 
     if (type === 'video') {
       setUploadingVideo(true);
+    } else if (type === 'thumbnail') {
+      setUploadingThumbnail(true);
     } else {
       setUploadingResource(true);
     }
@@ -302,9 +324,12 @@ const TeacherDashboard = () => {
         if (type === 'video') {
           setLessonForm(prev => ({ ...prev, videoUrl: fileUrl }));
           showNotification('success', 'Video uploaded successfully to Azure Storage!');
+        } else if (type === 'thumbnail') {
+          setEditCourseForm(prev => ({ ...prev, thumbnailUrl: fileUrl }));
+          showNotification('success', 'Course thumbnail uploaded successfully to Azure Storage!');
         } else {
-          setResourceForm(prev => ({ 
-            ...prev, 
+          setResourceForm(prev => ({
+            ...prev,
             fileUrl,
             fileName: prev.fileName || response.data.data.fileName,
             fileSize: parseInt(response.data.data.fileSize)
@@ -320,6 +345,8 @@ const TeacherDashboard = () => {
     } finally {
       if (type === 'video') {
         setUploadingVideo(false);
+      } else if (type === 'thumbnail') {
+        setUploadingThumbnail(false);
       } else {
         setUploadingResource(false);
       }
@@ -367,6 +394,19 @@ const TeacherDashboard = () => {
   const handleScheduleLive = async (e) => {
     e.preventDefault();
     try {
+      const now = new Date();
+      const startDateTime = new Date(liveForm.startTime);
+      const endDateTime = new Date(liveForm.endTime);
+
+      if (startDateTime < new Date(now.getTime() - 120000)) { // allow 2 mins skew
+        showNotification('error', 'Start time cannot be in the past.');
+        return;
+      }
+      if (endDateTime <= startDateTime) {
+        showNotification('error', 'End time must be after the start time.');
+        return;
+      }
+
       const formatDateTime = (dtStr) => {
         if (!dtStr) return "";
         if (dtStr.length === 16) return dtStr + ":00";
@@ -436,6 +476,23 @@ const TeacherDashboard = () => {
     });
   };
 
+  const handleStartEditSession = (session) => {
+    setEditingSession(session);
+    setLiveForm({
+      courseId: session.course?.id?.toString() || '',
+      title: session.title,
+      startTime: toLocalDatetimeString(session.startTime),
+      endTime: toLocalDatetimeString(session.endTime),
+      maxParticipants: session.maxParticipants || 50,
+      chatEnabled: session.chatEnabled !== false,
+      guestAccessEnabled: session.guestAccessEnabled !== false
+    });
+    const formElement = document.getElementById('live-schedule-form-container');
+    if (formElement) {
+      formElement.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   const handleDeleteSession = async (sessionId) => {
     if (!window.confirm("Are you sure you want to delete this live class session?")) return;
     try {
@@ -461,18 +518,7 @@ const TeacherDashboard = () => {
         setLiveSessions(liveSessions.map(s => s.id === sessionId ? sessionData : s));
         showNotification('success', 'Session started! Redirecting to classroom...');
         setTimeout(() => {
-          navigate(`/live/classroom/${sessionData.roomToken}`, {
-            state: {
-              sessionId: sessionData.id,
-              micEnabled: true,
-              camEnabled: true,
-              role: 'TEACHER',
-              name: userName,
-              title: sessionData.title,
-              courseName: sessionData.course?.title || sessionData.courseName,
-              teacherName: sessionData.teacher?.name || userName
-            }
-          });
+          navigate(`/live/join/${sessionData.roomToken}`);
         }, 1000);
       }
     } catch (error) {
@@ -531,14 +577,36 @@ const TeacherDashboard = () => {
     );
   }
 
+  const filteredSessions = liveSessions.filter(session => {
+    const matchesSearch = session.title.toLowerCase().includes(liveSearchQuery.toLowerCase()) ||
+      (session.course?.title || '').toLowerCase().includes(liveSearchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    const isPast = new Date(session.endTime || session.startTime) < new Date();
+
+    if (liveFilter === 'ALL') return true;
+    if (liveFilter === 'LIVE') return session.status === 'LIVE';
+    if (liveFilter === 'SCHEDULED') return session.status === 'SCHEDULED' && !isPast;
+    if (liveFilter === 'ENDED') return session.status === 'ENDED' || (session.status === 'SCHEDULED' && isPast);
+    return false;
+  });
+
+  const getSessionDateInfo = (dateStr) => {
+    if (!dateStr) return { month: '???', day: '??' };
+    const d = new Date(dateStr);
+    const month = d.toLocaleString('default', { month: 'short' }).toUpperCase();
+    const day = String(d.getDate()).padStart(2, '0');
+    return { month, day };
+  };
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 py-6 animate-fade-in relative pb-16">
-      
+
       {/* Toast Popup */}
-      <Toast 
-        type={notification.type} 
-        message={notification.msg} 
-        onClose={() => setNotification({ type: '', msg: '' })} 
+      <Toast
+        type={notification.type}
+        message={notification.msg}
+        onClose={() => setNotification({ type: '', msg: '' })}
       />
 
       {/* ══════════════════ SYLLABUS EDITOR OVERLAY VIEW ══════════════════ */}
@@ -601,7 +669,7 @@ const TeacherDashboard = () => {
                         Delete
                       </button>
                     </div>
-                    
+
                     <button
                       onClick={() => handleStartAddLesson(sec)}
                       className="text-xs font-black text-primary-400 hover:text-primary-300 cursor-pointer"
@@ -626,7 +694,7 @@ const TeacherDashboard = () => {
                               </a>
                             )}
                           </div>
-                          
+
                           <div className="flex space-x-2 shrink-0">
                             <button
                               onClick={() => handleStartEditLesson(sec, les)}
@@ -760,21 +828,19 @@ const TeacherDashboard = () => {
                     <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-primary-500 to-teal-400"></span>
                     <span>My Courses</span>
                   </h3>
-                  
+
                   <div className="flex space-x-2 bg-background p-1 rounded-xl border border-border shrink-0 self-start sm:self-auto">
                     <button
                       onClick={() => setCourseFilterTab('active')}
-                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer select-none ${
-                        courseFilterTab === 'active' ? 'bg-primary text-white shadow' : 'text-slate-400 hover:text-white'
-                      }`}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer select-none ${courseFilterTab === 'active' ? 'bg-primary text-white shadow' : 'text-slate-400 hover:text-white'
+                        }`}
                     >
                       Active ({courses.filter(c => c.active).length})
                     </button>
                     <button
                       onClick={() => setCourseFilterTab('archived')}
-                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer select-none ${
-                        courseFilterTab === 'archived' ? 'bg-amber-600/20 text-amber-400 border border-amber-500/20 shadow' : 'text-slate-400 hover:text-white'
-                      }`}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer select-none ${courseFilterTab === 'archived' ? 'bg-amber-600/20 text-amber-400 border border-amber-500/20 shadow' : 'text-slate-400 hover:text-white'
+                        }`}
                     >
                       Archived ({courses.filter(c => !c.active).length})
                     </button>
@@ -790,9 +856,8 @@ const TeacherDashboard = () => {
                         <div>
                           <div className="flex items-center space-x-2">
                             <h4 className="text-white font-extrabold text-sm">{course.title}</h4>
-                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
-                              course.active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            }`}>{course.active ? 'Published' : 'Archived'}</span>
+                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${course.active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              }`}>{course.active ? 'Published' : 'Archived'}</span>
                           </div>
                           <p className="text-[10px] text-text-muted mt-1 font-medium">{course.category || 'General'} | Price: ₹{course.price}</p>
                         </div>
@@ -836,10 +901,10 @@ const TeacherDashboard = () => {
             {/* Right Column: Schedule Live Class & Teaching Sessions (1/3 width) */}
             <div className="space-y-6">
               {/* Schedule Live Class Form */}
-              <div className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-4">
+              <div id="live-schedule-form-container" className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-4">
                 <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
                   <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-primary-500 to-teal-400"></span>
-                  <span>Schedule Live Class</span>
+                  <span>{editingSession ? 'Modify Live Class' : 'Schedule Live Class'}</span>
                 </h3>
 
                 <form onSubmit={handleScheduleLive} className="space-y-4 pt-2">
@@ -906,7 +971,9 @@ const TeacherDashboard = () => {
                       <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Start Time</label>
                       <input
                         type="datetime-local"
+                        id="live-start-time"
                         value={liveForm.startTime}
+                        min={getMinDateTime()}
                         onChange={(e) => setLiveForm({ ...liveForm, startTime: e.target.value })}
                         className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                         required
@@ -916,7 +983,9 @@ const TeacherDashboard = () => {
                       <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">End Time</label>
                       <input
                         type="datetime-local"
+                        id="live-end-time"
                         value={liveForm.endTime}
+                        min={liveForm.startTime || getMinDateTime()}
                         onChange={(e) => setLiveForm({ ...liveForm, endTime: e.target.value })}
                         className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
                         required
@@ -924,9 +993,20 @@ const TeacherDashboard = () => {
                     </div>
                   </div>
 
-                  <button type="submit" className="w-full bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
-                    Schedule Class
-                  </button>
+                  <div className="flex gap-2">
+                    <button type="submit" className="flex-1 bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white text-[10px] font-black uppercase py-3 rounded-xl transition cursor-pointer select-none">
+                      {editingSession ? 'Reschedule Class' : 'Schedule Class'}
+                    </button>
+                    {editingSession && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEditLive}
+                        className="bg-surface-700 hover:bg-surface-600 text-slate-350 text-[10px] font-black uppercase py-3 px-4 rounded-xl transition cursor-pointer select-none"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </form>
               </div>
 
@@ -934,71 +1014,185 @@ const TeacherDashboard = () => {
               <div className="bg-card border border-border rounded-3xl p-6 shadow-xl space-y-4">
                 <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
                   <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-rose-500 to-red-400"></span>
-                  <span>Teaching Sessions ({liveSessions.length})</span>
+                  <span>Teaching Sessions ({filteredSessions.length})</span>
                 </h3>
 
+                {/* Search & Filter Controls */}
+                <div className="space-y-2 pb-1">
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500 text-xs">
+                      🔍
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Search sessions..."
+                      value={liveSearchQuery}
+                      onChange={(e) => setLiveSearchQuery(e.target.value)}
+                      className="w-full bg-background border border-border rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-primary-500"
+                    />
+                  </div>
+                  <div className="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none border-b border-border/40">
+                    {[
+                      { id: 'ALL', label: 'All' },
+                      { id: 'LIVE', label: '🔴 Live' },
+                      { id: 'SCHEDULED', label: '📅 Scheduled' },
+                      { id: 'ENDED', label: '⏱️ Ended' }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setLiveFilter(tab.id)}
+                        className={`px-3 py-1 rounded-lg text-[9px] font-bold transition whitespace-nowrap cursor-pointer select-none ${
+                          liveFilter === tab.id
+                            ? 'bg-primary text-white shadow'
+                            : 'bg-background border border-border text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="space-y-3.5 max-h-[400px] overflow-y-auto pr-1">
-                  {liveSessions.length === 0 ? (
+                  {filteredSessions.length === 0 ? (
                     <p className="text-xs text-slate-500 italic py-8 text-center bg-background/5 rounded-2xl border border-dashed border-border/30">
-                      No classrooms scheduled.
+                      No classrooms found.
                     </p>
                   ) : (
-                    liveSessions.map(session => (
-                      <div key={session.id} className="bg-background/45 border border-border p-3.5 rounded-xl space-y-3">
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <span className="text-[8px] bg-primary-600/10 text-primary-400 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">{session.course?.title || 'Class'}</span>
-                            <h4 className="text-white font-extrabold text-xs mt-1.5">{session.title}</h4>
+                    filteredSessions.map(session => {
+                      const { month, day } = getSessionDateInfo(session.startTime);
+                      const isSessionLive = session.status === 'LIVE';
+                      const isPast = new Date(session.endTime || session.startTime) < new Date();
+                      const isSessionScheduled = session.status === 'SCHEDULED' && !isPast;
+                      const isSessionMissed = session.status === 'SCHEDULED' && isPast;
+                      const isSessionEnded = session.status === 'ENDED';
+
+                      return (
+                        <div
+                          key={session.id}
+                          className={`bg-background/45 border p-3 rounded-2xl flex items-center space-x-3.5 relative overflow-hidden transition ${
+                            isSessionLive
+                              ? 'border-rose-500/35 bg-rose-500/5 shadow-lg shadow-rose-500/5 animate-glow-pulse'
+                              : isSessionMissed
+                              ? 'border-amber-500/30 bg-amber-500/5'
+                              : 'border-border hover:border-slate-700/50'
+                          }`}
+                          style={{
+                            borderLeftWidth: '4px',
+                            borderLeftColor: isSessionLive
+                              ? 'var(--color-error)'
+                              : isSessionScheduled
+                              ? 'var(--color-primary-500)'
+                              : isSessionMissed
+                              ? '#d97706'
+                              : 'var(--color-surface-500)'
+                          }}
+                        >
+                          {/* Calendar Ticket Badge */}
+                          <div className="flex flex-col items-center justify-center w-12 h-12 bg-surface-700/60 rounded-xl border border-border shrink-0 overflow-hidden">
+                            <div className={`w-full text-center text-[8px] font-black py-0.5 uppercase tracking-wider ${
+                              isSessionLive
+                                ? 'bg-error text-white animate-pulse'
+                                : isSessionMissed
+                                ? 'bg-amber-600/30 text-amber-450 border-b border-border/40 font-bold'
+                                : isSessionEnded
+                                ? 'bg-surface-800 text-slate-500 border-b border-border/40 font-bold'
+                                : 'bg-primary-600/20 text-primary-400 border-b border-border/40 font-bold'
+                            }`}>
+                              {isSessionLive ? 'LIVE' : isSessionMissed ? 'MISSED' : isSessionEnded ? 'ENDED' : month}
+                            </div>
+                            <div className="text-sm font-black text-white py-1 leading-none">
+                              {day}
+                            </div>
                           </div>
-                          <div className="flex space-x-2 shrink-0">
-                            {session.status === 'SCHEDULED' && (
-                              <button
-                                onClick={() => handleStartSession(session.id)}
-                                className="text-[9px] font-black text-emerald-400 hover:underline uppercase transition cursor-pointer"
-                              >
-                                Start
-                              </button>
-                            )}
-                            {session.status === 'ACTIVE' && (
-                              <>
+
+                          {/* Info Column */}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                              <span className="text-[7px] bg-primary-600/10 text-primary-400 px-1.5 py-0.5 rounded font-black uppercase tracking-wider truncate max-w-[120px]">
+                                {session.course?.title || 'Class'}
+                              </span>
+                              {isSessionLive && (
+                                <span className="flex h-1.5 w-1.5 relative">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-rose-500"></span>
+                                </span>
+                              )}
+                              {isSessionMissed && (
+                                <span className="text-[7px] text-amber-400 font-bold uppercase tracking-wider">
+                                  Expired
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="text-white font-extrabold text-[11px] leading-tight truncate" title={session.title}>
+                              {session.title}
+                            </h4>
+                            <div className="text-[9px] text-slate-400 flex items-center space-x-1">
+                              <span>
+                                🕒 {new Date(session.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(session.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-col items-end space-y-1.5 shrink-0">
+                            {isSessionScheduled && (
+                              <div className="flex items-center space-x-1.5">
                                 <button
-                                  onClick={() => navigate(`/live/classroom/${session.roomToken}`, {
-                                    state: {
-                                      sessionId: session.id,
-                                      micEnabled: true,
-                                      camEnabled: true,
-                                      role: 'TEACHER',
-                                      name: userName,
-                                      title: session.title,
-                                      courseName: session.course?.title || session.courseName,
-                                      teacherName: session.teacher?.name || userName
-                                    }
-                                  })}
-                                  className="text-[9px] font-black text-primary-400 hover:underline uppercase transition cursor-pointer"
+                                  onClick={() => handleStartSession(session.id)}
+                                  className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/20 text-[8px] font-black uppercase px-2 py-0.5 rounded-md transition cursor-pointer select-none"
+                                >
+                                  Start
+                                </button>
+                                <button
+                                  onClick={() => handleStartEditSession(session)}
+                                  className="text-[9px] font-bold text-slate-400 hover:text-white transition cursor-pointer select-none bg-surface-700 hover:bg-surface-650 px-1.5 py-0.5 rounded border border-border"
+                                  title="Reschedule Class"
+                                >
+                                  ✏️
+                                </button>
+                              </div>
+                            )}
+                            {isSessionMissed && (
+                              <div className="flex items-center space-x-1.5">
+                                <button
+                                  onClick={() => handleStartEditSession(session)}
+                                  className="text-[9px] font-bold text-amber-450 hover:text-white transition cursor-pointer select-none bg-surface-700 hover:bg-amber-600/20 px-1.5 py-0.5 rounded border border-amber-500/20"
+                                  title="Reschedule Class"
+                                >
+                                  Reschedule ✏️
+                                </button>
+                              </div>
+                            )}
+                            {isSessionLive && (
+                              <div className="flex items-center space-x-1.5">
+                                <button
+                                  onClick={() => navigate(`/live/join/${session.roomToken}`)}
+                                  className="bg-primary-600 hover:bg-primary-500 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded-md transition cursor-pointer select-none shadow shadow-primary-650/15"
                                 >
                                   Join
                                 </button>
                                 <button
                                   onClick={() => handleEndSession(session.id)}
-                                  className="text-[9px] font-black text-rose-450 hover:underline uppercase transition cursor-pointer"
+                                  className="bg-rose-500/20 hover:bg-rose-500 text-rose-450 hover:text-white border border-rose-500/30 text-[8px] font-black uppercase px-2 py-0.5 rounded-md transition cursor-pointer select-none"
                                 >
                                   End
                                 </button>
-                              </>
+                              </div>
                             )}
-                            <button
-                              onClick={() => handleDeleteSession(session.id)}
-                              className="text-[9px] font-bold text-slate-500 hover:text-error transition cursor-pointer"
-                            >
-                              Cancel
-                            </button>
+                            {!isSessionLive && (
+                              <button
+                                onClick={() => handleDeleteSession(session.id)}
+                                className="text-[8px] font-bold text-slate-500 hover:text-rose-400 transition cursor-pointer uppercase tracking-wider select-none"
+                              >
+                                Cancel
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <div className="text-[10px] text-slate-400 flex items-center space-x-1">
-                          <span>📅 {new Date(session.startTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1008,7 +1202,7 @@ const TeacherDashboard = () => {
       )}
 
       {/* ══════════════════ MODALS OVERLAYS ══════════════════ */}
-      
+
       {/* 1. Edit Course details Modal */}
       {editingCourse && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
@@ -1051,10 +1245,58 @@ const TeacherDashboard = () => {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Thumbnail URL</label>
+            <div className="space-y-2">
+              <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Course Thumbnail</label>
+              
+              {/* Image Preview */}
+              {editCourseForm.thumbnailUrl && (
+                <div className="relative h-28 w-full bg-slate-900 border border-border rounded-xl overflow-hidden group">
+                  <img
+                    src={editCourseForm.thumbnailUrl}
+                    alt="Course Thumbnail Preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-200">
+                    <span className="text-[10px] text-white font-extrabold uppercase bg-black/60 px-3 py-1.5 rounded-lg border border-white/10 select-none">
+                      Current Preview
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Option 1: File Upload */}
+              <div className="space-y-1">
+                <input
+                  type="file"
+                  id="thumbnail-file-upload-input"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e.target.files[0], 'thumbnail')}
+                  disabled={uploadingThumbnail}
+                />
+                <label
+                  htmlFor="thumbnail-file-upload-input"
+                  className={`flex items-center justify-center space-x-2 border border-dashed border-border hover:border-slate-500 bg-background hover:bg-surface-700/60 py-3 rounded-xl cursor-pointer text-slate-300 hover:text-white text-xs transition select-none font-bold ${
+                    uploadingThumbnail ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''
+                  }`}
+                >
+                  <span>📁</span>
+                  <span>{uploadingThumbnail ? 'Uploading to Azure Storage...' : 'Upload Image from Laptop/Phone'}</span>
+                </label>
+              </div>
+
+              {/* Divider */}
+              <div className="flex items-center justify-center space-x-2 py-0.5 select-none">
+                <div className="h-px bg-border/45 flex-1"></div>
+                <span className="text-[8px] text-slate-500 font-bold uppercase tracking-widest">Or paste link</span>
+                <div className="h-px bg-border/45 flex-1"></div>
+              </div>
+
+              {/* Option 2: Paste URL Input */}
               <input
                 type="text"
+                placeholder="https://example.com/image.png"
                 value={editCourseForm.thumbnailUrl}
                 onChange={(e) => setEditCourseForm({ ...editCourseForm, thumbnailUrl: e.target.value })}
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
@@ -1076,9 +1318,9 @@ const TeacherDashboard = () => {
               <h3 className="font-extrabold text-sm text-white">
                 {editingLessonId ? 'Modify Lecture Details' : 'Add New Lecture'}
               </h3>
-              <button 
-                type="button" 
-                onClick={() => { setShowLessonModal(false); setEditingLessonId(null); }} 
+              <button
+                type="button"
+                onClick={() => { setShowLessonModal(false); setEditingLessonId(null); }}
                 className="text-slate-400"
               >
                 ✕

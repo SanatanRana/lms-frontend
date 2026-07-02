@@ -275,7 +275,7 @@ const CourseLearn = () => {
       const percent = Math.round((lessonIndex / totalLessons) * 100);
       await api.patch(`/enrollments/progress/${id}?percent=${percent}`);
       showToast('success', 'Lesson complete! Saving progress...');
-      
+
       // Auto advance to next lesson
       advanceNextLesson();
     } catch (error) {
@@ -378,7 +378,7 @@ const CourseLearn = () => {
     if (videoRef.current) {
       const curTime = videoRef.current.currentTime;
       setCurrentTime(curTime);
-      
+
       // Save for auto resume every 5 seconds (but clear if near end)
       if (activeLesson) {
         const userPrefix = user?.email || 'guest';
@@ -400,13 +400,13 @@ const CourseLearn = () => {
       if (width && height) {
         setVideoAspectRatio(width / height);
       }
-      
+
       // Apply pending seeks safely
       if (pendingSeekRef.current !== null) {
         videoRef.current.currentTime = pendingSeekRef.current;
         pendingSeekRef.current = null;
       }
-      
+
       // Persistent speed restoration
       const userPrefix = user?.email || 'guest';
       const speedKey = `${userPrefix}_learngen_playback_speed`;
@@ -615,16 +615,16 @@ const CourseLearn = () => {
 
   const renderVideoPlayer = (url, title) => {
     if (!url) return null;
-    
+
     // Check if YouTube/Vimeo embed
     const isEmbed = url.includes('youtube.com') || url.includes('youtu.be') || url.includes('vimeo.com');
-    
+
     if (isEmbed) {
-      const embedUrl = url.includes('youtube.com') || url.includes('youtu.be') 
-        ? url.replace("watch?v=", "embed/") 
+      const embedUrl = url.includes('youtube.com') || url.includes('youtu.be')
+        ? url.replace("watch?v=", "embed/")
         : url;
       return (
-        <iframe 
+        <iframe
           className="w-full h-full"
           src={embedUrl}
           title={title}
@@ -632,15 +632,15 @@ const CourseLearn = () => {
         ></iframe>
       );
     }
-    
+
     // HTML5 native video player with Custom Overlay UI
     return (
-      <div 
-        ref={playerContainerRef} 
+      <div
+        ref={playerContainerRef}
         onClick={() => setShowControls(prev => !prev)}
         className="video-player-container w-full h-full relative group bg-black flex items-center justify-center cursor-pointer select-none overflow-hidden"
       >
-        <video 
+        <video
           ref={videoRef}
           src={url}
           onTimeUpdate={handleTimeUpdate}
@@ -652,10 +652,9 @@ const CourseLearn = () => {
         />
 
         {/* Centered Controls Overlay (Large touch targets for mobile/gesture control) */}
-        <div 
-          className={`absolute inset-0 bg-black/45 flex items-center justify-center space-x-6 z-10 transition-opacity duration-300 ${
-            showControls ? 'opacity-100 font-bold' : 'opacity-0 pointer-events-none'
-          }`}
+        <div
+          className={`absolute inset-0 bg-black/45 flex items-center justify-center space-x-6 z-10 transition-opacity duration-300 ${showControls ? 'opacity-100 font-bold' : 'opacity-0 pointer-events-none'
+            }`}
         >
           {/* Rewind 10s */}
           <button
@@ -713,16 +712,15 @@ const CourseLearn = () => {
         )}
 
         {/* Control Bar Overlay */}
-        <div 
+        <div
           onClick={(e) => e.stopPropagation()}
-          className={`control-bar absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 z-20 ${
-            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+          className={`control-bar absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
         >
           {/* Progress timeline scrubber */}
           <div className="flex items-center space-x-3">
             <span className="text-[10px] text-slate-300 font-mono">{formatTime(currentTime)}</span>
-            <input 
+            <input
               type="range"
               min="0"
               max={duration || 100}
@@ -742,8 +740,8 @@ const CourseLearn = () => {
               </button>
 
               {/* Stop Video */}
-              <button 
-                onClick={handleStopVideo} 
+              <button
+                onClick={handleStopVideo}
                 className="text-rose-400 hover:text-rose-300 text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 px-2 py-0.5 rounded-lg transition cursor-pointer"
                 title="Stop Video"
               >
@@ -751,8 +749,8 @@ const CourseLearn = () => {
               </button>
 
               {/* Back 10s */}
-              <button 
-                onClick={() => { if (videoRef.current) { const back = Math.max(0, videoRef.current.currentTime - 10); safeSeek(back); setCurrentTime(back); } }} 
+              <button
+                onClick={() => { if (videoRef.current) { const back = Math.max(0, videoRef.current.currentTime - 10); safeSeek(back); setCurrentTime(back); } }}
                 className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
                 title="Rewind 10s"
               >
@@ -760,8 +758,8 @@ const CourseLearn = () => {
               </button>
 
               {/* Forward 10s */}
-              <button 
-                onClick={() => { if (videoRef.current) { const fwd = Math.min(duration, videoRef.current.currentTime + 10); safeSeek(fwd); setCurrentTime(fwd); } }} 
+              <button
+                onClick={() => { if (videoRef.current) { const fwd = Math.min(duration, videoRef.current.currentTime + 10); safeSeek(fwd); setCurrentTime(fwd); } }}
                 className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
                 title="Forward 10s"
               >
@@ -773,7 +771,7 @@ const CourseLearn = () => {
                 <button onClick={toggleMute} className="text-white hover:text-teal-400 text-xs cursor-pointer">
                   {isMuted ? '🔇' : '🔊'}
                 </button>
-                <input 
+                <input
                   type="range"
                   min="0"
                   max="1"
@@ -788,7 +786,7 @@ const CourseLearn = () => {
             <div className="flex items-center space-x-3 text-xs relative">
               {/* Playback speed */}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }}
                   className="text-white hover:text-teal-400 font-bold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
                 >
@@ -797,7 +795,7 @@ const CourseLearn = () => {
                 {showSpeedMenu && (
                   <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-20 flex flex-col z-20">
                     {[0.5, 1, 1.25, 1.5, 2].map(speed => (
-                      <button 
+                      <button
                         key={speed}
                         onClick={() => handleSpeedChange(speed)}
                         className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${playbackSpeed === speed ? 'text-teal-400' : ''}`}
@@ -811,7 +809,7 @@ const CourseLearn = () => {
 
               {/* Quality selector */}
               <div className="relative">
-                <button 
+                <button
                   onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }}
                   className="text-white hover:text-teal-400 font-semibold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
                 >
@@ -820,7 +818,7 @@ const CourseLearn = () => {
                 {showQualityMenu && (
                   <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-24 flex flex-col z-20">
                     {['Auto', '1080p', '720p', '480p'].map(q => (
-                      <button 
+                      <button
                         key={q}
                         onClick={() => handleQualityChange(q)}
                         className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${quality === q ? 'text-teal-400' : ''}`}
@@ -838,9 +836,9 @@ const CourseLearn = () => {
               </button>
 
               {/* Theatre Mode */}
-              <button 
-                onClick={() => setIsTheatreMode(!isTheatreMode)} 
-                className="hidden lg:block text-white hover:text-teal-400 text-xs cursor-pointer" 
+              <button
+                onClick={() => setIsTheatreMode(!isTheatreMode)}
+                className="hidden lg:block text-white hover:text-teal-400 text-xs cursor-pointer"
                 title={isTheatreMode ? "Exit Theatre Mode" : "Theatre Mode"}
               >
                 {isTheatreMode ? '🗗' : '🗖'}
@@ -866,7 +864,7 @@ const CourseLearn = () => {
 
   return (
     <div className="min-h-[85vh] bg-surface-900 flex flex-col-reverse lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
-      
+
       {/* Toast popup */}
       {toast.show && (
         <Toast type={toast.type} message={toast.message} onClose={() => setToast({ show: false, message: '', type: 'success' })} />
@@ -890,11 +888,10 @@ const CourseLearn = () => {
                   <button
                     key={les.id}
                     onClick={() => setActiveLesson(les)}
-                    className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between border transition ${
-                      activeLesson?.id === les.id 
-                        ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 font-bold' 
+                    className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between border transition ${activeLesson?.id === les.id
+                        ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 font-bold'
                         : 'bg-transparent border-transparent text-slate-400 hover:bg-surface-700/30'
-                    }`}
+                      }`}
                   >
                     <span className="line-clamp-1">{sIdx + 1}.{lIdx + 1} {les.title}</span>
                     <svg className="w-3.5 h-3.5 opacity-60 shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
@@ -917,7 +914,7 @@ const CourseLearn = () => {
               <span className="w-2.5 h-2.5 rounded-full bg-error"></span>
               <span className="text-xs font-bold">A live session "{liveClass.title}" is currently active!</span>
             </div>
-            <button 
+            <button
               onClick={() => handleJoinLive(liveClass.id, liveClass)}
               className="bg-error hover:bg-error text-white text-[10px] font-extrabold px-3 py-1.5 rounded-lg transition"
             >
@@ -929,10 +926,10 @@ const CourseLearn = () => {
         {/* Video Frame */}
         {hasVideo ? (
           <div className="space-y-4">
-            <div 
+            <div
               className="bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl transition-all duration-300 w-full"
-              style={{ 
-                aspectRatio: videoAspectRatio ? videoAspectRatio : '16/9', 
+              style={{
+                aspectRatio: videoAspectRatio ? videoAspectRatio : '16/9',
                 maxHeight: isFullscreen ? '100vh' : '70vh'
               }}
             >
@@ -980,11 +977,10 @@ const CourseLearn = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-3.5 text-xs font-bold transition border-b-2 whitespace-nowrap cursor-pointer ${
-                  activeTab === tab.id 
-                    ? 'border-primary-600 text-primary-400 bg-primary-600/5' 
+                className={`px-5 py-3.5 text-xs font-bold transition border-b-2 whitespace-nowrap cursor-pointer ${activeTab === tab.id
+                    ? 'border-primary-600 text-primary-400 bg-primary-600/5'
                     : 'border-transparent text-slate-400 hover:text-white'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -992,7 +988,7 @@ const CourseLearn = () => {
           </div>
 
           <div className="p-6">
-            
+
             {/* Tab 1: Syllabus Info */}
             {activeTab === 'syllabus' && (
               <div className="space-y-4">
@@ -1010,15 +1006,15 @@ const CourseLearn = () => {
                 </div>
 
                 <form onSubmit={handleAddNote} className="flex gap-2">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder={`Type a note at ${formatTime(currentTime)}...`}
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
                     className="flex-grow bg-surface-900 border border-surface-600 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
                     required
                   />
-                  <button 
+                  <button
                     type="submit"
                     className="bg-teal-500 hover:bg-teal-400 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition cursor-pointer shrink-0"
                   >
@@ -1041,7 +1037,7 @@ const CourseLearn = () => {
                           </button>
                           <span className="text-xs text-slate-300 font-medium truncate">{note.text}</span>
                         </div>
-                        <button 
+                        <button
                           onClick={() => handleDeleteNote(note.id)}
                           className="text-[10px] text-slate-500 hover:text-rose-400 transition font-bold"
                         >
@@ -1081,9 +1077,9 @@ const CourseLearn = () => {
                                 View 👁️
                               </button>
                             )}
-                            <a 
-                              href={res.fileUrl} 
-                              target="_blank" 
+                            <a
+                              href={res.fileUrl}
+                              target="_blank"
                               rel="noreferrer"
                               className="bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
                             >
@@ -1217,7 +1213,7 @@ const CourseLearn = () => {
               <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest">AI Doubt assistant</span>
               <h3 className="font-extrabold text-sm text-white mt-0.5">LearnGen AI Tutor</h3>
             </div>
-            <button 
+            <button
               onClick={() => setShowAiChat(false)}
               className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
             >
