@@ -28,6 +28,11 @@ export const LiveClassroom = () => {
   const [showPeople, setShowPeople] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingBlob, setRecordingBlob] = useState(null);
+  const [incomingMuted, setIncomingMuted] = useState(false);
+  const [timeLeft, setTimeLeft] = useState('');
+  const [isUnderFiveMin, setIsUnderFiveMin] = useState(false);
+  const [isOvertime, setIsOvertime] = useState(false);
+  const [hasWarnedFiveMin, setHasWarnedFiveMin] = useState(false);
 
   const chatEndRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -50,7 +55,7 @@ export const LiveClassroom = () => {
 
   // Construct WebSocket signaling URL
   const tokenParam = localStorage.getItem('token') ? `?token=${localStorage.getItem('token')}` : '';
-  
+
   // Dynamically resolve signaling server URL based on the environment to support mobile and HTTPS
   const getWebSocketUrl = () => {
     const apiBaseUrl = import.meta.env.VITE_API_URL;
@@ -84,7 +89,7 @@ export const LiveClassroom = () => {
   // ── 1. WebSocket signaling event dispatcher ──
   const onWebSocketMessage = useCallback((message) => {
     const { type, payload } = message;
-    
+
     switch (type) {
       case 'ROOM_JOINED':
         console.log('[Classroom] Room joined successfully. My WS ID:', payload.yourSessionId);
@@ -190,10 +195,16 @@ export const LiveClassroom = () => {
         }
         break;
 
+      case 'ROOM_ENDED':
+        console.log('[Classroom] Room ended:', payload.message);
+        alert(payload.message || 'The live class has been ended by the instructor.');
+        navigate('/dashboard');
+        break;
+
       default:
         break;
     }
-  }, [isTeacher]);
+  }, [isTeacher, navigate]);
 
   // Connect to WS signaling
   const { connect, disconnect, send: wsSend, isConnected: wsConnected } = useWebSocket(
@@ -259,7 +270,7 @@ export const LiveClassroom = () => {
     const startClassroom = async () => {
       try {
         let activeSessionId = sessionIdRef.current;
-        
+
         // Fetch session info by roomToken if we don't have the sessionId
         if (!activeSessionId) {
           console.log('[Classroom] Resolving sessionId from roomToken:', roomToken);
@@ -326,6 +337,50 @@ export const LiveClassroom = () => {
     }
   }, [chatMessages, showChat]);
 
+  // Countdown Timer & Warning Logic
+  useEffect(() => {
+    if (!sessionDetails?.endTime) return;
+
+    const targetTime = new Date(sessionDetails.endTime).getTime();
+
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const difference = targetTime - now;
+
+      if (difference <= 0) {
+        setTimeLeft('Time Over');
+        setIsOvertime(true);
+        setIsUnderFiveMin(false);
+        return;
+      }
+
+      setIsOvertime(false);
+      const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+      const pad = (num) => String(num).padStart(2, '0');
+      let timeString = `${pad(minutes)}:${pad(seconds)}`;
+      if (hours > 0) {
+        timeString = `${pad(hours)}:${timeString}`;
+      }
+      setTimeLeft(timeString);
+
+      const isUnderFive = difference <= 5 * 60 * 1000;
+      setIsUnderFiveMin(isUnderFive);
+
+      if (isUnderFive && difference > 4.8 * 60 * 1000 && !hasWarnedFiveMin) {
+        setHasWarnedFiveMin(true);
+        alert("Attention: Only 5 minutes remaining in this live class session.");
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionDetails?.endTime, hasWarnedFiveMin]);
+
   // ── 3. Chat Form Submission ──
   const handleSendChat = (e) => {
     if (e) e.preventDefault();
@@ -349,10 +404,10 @@ export const LiveClassroom = () => {
   const startRecordingSession = () => {
     if (!localStream) return;
     chunksRef.current = [];
-    
+
     // Merge screen or local video stream to record
     const streamToRecord = isScreenSharing && screenStreamRef.current ? screenStreamRef.current : localStream;
-    
+
     try {
       const options = { mimeType: 'video/webm;codecs=vp9,opus' };
       const mediaRecorder = new MediaRecorder(streamToRecord, options);
@@ -392,7 +447,7 @@ export const LiveClassroom = () => {
       if (endRoom) {
         try {
           await api.patch(`/live/${sessionId}/end`);
-          
+
           // If recording exists, offer to upload it
           if (recordingBlob) {
             const upload = window.confirm('Do you want to upload the recorded class video to Azure for students to review?');
@@ -457,7 +512,7 @@ export const LiveClassroom = () => {
     ([, peer]) => peer.role === 'TEACHER' || peer.role === 'ADMIN'
   );
 
-  const isTeacherMuted = teacherStreamObj 
+  const isTeacherMuted = teacherStreamObj
     ? (participants.find(p => p.sessionId === teacherStreamObj[0])?.videoMuted ?? true)
     : true;
 
@@ -491,7 +546,7 @@ export const LiveClassroom = () => {
 
   return (
     <div className="h-screen flex flex-col bg-surface-900 text-white overflow-hidden">
-      
+
       {/* ── Header Toolbar ── */}
       <header className="px-6 py-4 bg-surface-800 border-b border-white/5 flex items-center justify-between landscape:max-lg:hidden">
         <div className="flex items-center gap-3">
@@ -510,6 +565,19 @@ export const LiveClassroom = () => {
         )}
 
         <div className="flex items-center gap-3">
+          {timeLeft && (
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold tracking-wider ${
+              isOvertime
+                ? 'bg-rose-950/40 border border-rose-500/20 text-rose-400 font-extrabold'
+                : isUnderFiveMin
+                  ? 'bg-amber-950/40 border border-amber-500/20 text-amber-400 animate-pulse font-extrabold'
+                  : 'bg-primary-950/40 border border-primary-500/20 text-primary-400'
+            }`}>
+              <span>⏱️</span>
+              <span>{isOvertime ? 'Session Time Over' : `Remaining: ${timeLeft}`}</span>
+            </div>
+          )}
+
           <span className={`w-2.5 h-2.5 rounded-full ${connectionQuality === 'good' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
           <span className="text-xs text-slate-400 uppercase tracking-widest font-semibold hidden md:inline">
             Net Quality: {connectionQuality}
@@ -519,12 +587,18 @@ export const LiveClassroom = () => {
 
       {/* ── Main Panel Layout ── */}
       <div className="flex-1 flex overflow-hidden relative">
-        
+
         {/* Left Side: Focus Mode Live Room View */}
         <div className="flex-grow p-4 md:p-6 flex flex-col gap-4 bg-surface-950/60 overflow-hidden relative landscape:max-lg:p-0">
-          
+
           {/* Main Presenter Stage */}
           <div className="flex-1 min-h-0 w-full flex items-center justify-center relative">
+            {isScreenSharing && (
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20 bg-amber-500/90 backdrop-blur-md text-slate-900 text-xs font-black px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-lg border border-amber-400 max-w-[90%] text-center">
+                <span>🖥️</span>
+                <span>You are sharing your screen. To prevent a "hall of mirrors" infinite loop, share a specific window/app instead of your entire screen.</span>
+              </div>
+            )}
             {isTeacher ? (
               <div className="relative w-full h-full max-w-5xl aspect-video rounded-2xl bg-slate-900 border border-white/5 overflow-hidden flex items-center justify-center shadow-2xl landscape:max-lg:max-w-none landscape:max-lg:h-full landscape:max-lg:w-full landscape:max-lg:rounded-none landscape:max-lg:border-0">
                 <video
@@ -554,6 +628,7 @@ export const LiveClassroom = () => {
                   <video
                     autoPlay
                     playsInline
+                    muted={incomingMuted}
                     ref={(el) => { if (el) el.srcObject = teacherStreamObj[1].stream; }}
                     className={`w-full h-full object-cover transition-opacity duration-300 ${!isTeacherMuted ? 'opacity-100' : 'opacity-0'}`}
                   />
@@ -593,7 +668,7 @@ export const LiveClassroom = () => {
                 {Object.entries(remoteStreams).filter(([, p]) => p.role !== 'TEACHER').length + (!isTeacher ? 1 : 0)}
               </span>
             </h4>
-            
+
             <div className="w-full flex items-center gap-4 overflow-x-auto py-2 px-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
               {/* Local student preview ("You") */}
               {!isTeacher && localStream && (
@@ -639,6 +714,7 @@ export const LiveClassroom = () => {
                       <video
                         autoPlay
                         playsInline
+                        muted={incomingMuted}
                         ref={(el) => { if (el) el.srcObject = peer.stream; }}
                         className={`w-full h-full object-cover transform -scale-x-100 transition-opacity duration-300 ${!isPeerVideoMuted ? 'opacity-100' : 'opacity-0'}`}
                       />
@@ -676,7 +752,7 @@ export const LiveClassroom = () => {
 
         {/* Mobile Backdrop for Sidebar Drawers */}
         {(showChat || showPeople) && (
-          <div 
+          <div
             className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity"
             onClick={() => { setShowChat(false); setShowPeople(false); }}
           />
@@ -689,16 +765,15 @@ export const LiveClassroom = () => {
               <span className="text-sm font-extrabold uppercase tracking-widest text-primary-400">Classroom Chat</span>
               <button onClick={() => setShowChat(false)} className="text-slate-500 hover:text-white transition">✕</button>
             </div>
-            
+
             {/* Messages Display */}
             <div className="flex-1 p-4 overflow-y-auto space-y-3">
               {chatMessages.map((msg, index) => (
                 <div key={index} className="flex flex-col bg-surface-900/30 p-3 rounded-xl border border-white/5">
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className="text-xs font-bold text-slate-300">{msg.senderName}</span>
-                    <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${
-                      msg.senderRole === 'TEACHER' ? 'bg-primary-500/20 text-primary-400' : 'bg-slate-700/30 text-slate-400'
-                    }`}>
+                    <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-semibold ${msg.senderRole === 'TEACHER' ? 'bg-primary-500/20 text-primary-400' : 'bg-slate-700/30 text-slate-400'
+                      }`}>
                       {msg.senderRole}
                     </span>
                     <span className="text-[9px] text-slate-600 ml-auto">
@@ -793,36 +868,31 @@ export const LiveClassroom = () => {
 
       {/* ── Bottom Controls Toolbar ── */}
       <footer className="px-4 py-4 md:px-6 md:py-5 bg-surface-800 border-t border-white/5 flex flex-wrap items-center justify-between gap-4 landscape:max-lg:py-1.5 landscape:max-lg:gap-1.5 landscape:max-lg:px-3">
-        
+
         {/* Left Toolbar actions */}
         <div className="flex flex-wrap items-center gap-2 md:gap-4">
           <button
             onClick={toggleAudio}
-            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-              isAudioMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
-            }`}
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${isAudioMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
+              }`}
           >
             <span>{isAudioMuted ? '🎙️ Muted' : '🎤 Active'}</span>
           </button>
           <button
             onClick={toggleVideo}
-            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-              isVideoMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
-            }`}
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${isVideoMuted ? 'bg-rose-600/10 border-rose-500/20 text-rose-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
+              }`}
           >
             <span>{isVideoMuted ? '📹 Camera Off' : '📷 Camera On'}</span>
           </button>
 
-          {isTeacher && (
-            <button
-              onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                isScreenSharing ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
+          <button
+            onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+            className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${isScreenSharing ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
               }`}
-            >
-              <span>🖥️ {isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
-            </button>
-          )}
+          >
+            <span>🖥️ {isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
+          </button>
         </div>
 
         {/* Center Toolbar actions */}
@@ -830,9 +900,8 @@ export const LiveClassroom = () => {
           {isTeacher && (
             <button
               onClick={isRecording ? stopRecordingSession : startRecordingSession}
-              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${
-                isRecording ? 'bg-rose-600/20 border-rose-500/30 text-rose-400 animate-pulse' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
-              }`}
+              className={`px-4 py-2.5 landscape:max-lg:px-2.5 landscape:max-lg:py-1.5 landscape:max-lg:text-[10px] rounded-xl border text-xs font-bold flex items-center gap-2 transition cursor-pointer ${isRecording ? 'bg-rose-600/20 border-rose-500/30 text-rose-400 animate-pulse' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
+                }`}
             >
               <span>● {isRecording ? 'Stop Recording' : 'Record Lecture'}</span>
             </button>
@@ -840,18 +909,16 @@ export const LiveClassroom = () => {
 
           <button
             onClick={() => { setShowChat(!showChat); setShowPeople(false); }}
-            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${
-              showChat ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
-            }`}
+            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${showChat ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
+              }`}
             title="Toggle Chat"
           >
             💬
           </button>
           <button
             onClick={() => { setShowPeople(!showPeople); setShowChat(false); }}
-            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${
-              showPeople ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
-            }`}
+            className={`p-2.5 landscape:max-lg:p-1.5 rounded-xl border text-xs transition cursor-pointer ${showPeople ? 'bg-primary-600/10 border-primary-500/20 text-primary-500' : 'bg-slate-700/30 border-white/5 hover:bg-slate-700/60'
+              }`}
             title="Toggle Participants"
           >
             👥
