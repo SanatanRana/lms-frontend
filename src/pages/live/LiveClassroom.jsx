@@ -60,9 +60,10 @@ export const LiveClassroom = () => {
   const getWebSocketUrl = () => {
     const apiBaseUrl = import.meta.env.VITE_API_URL;
     if (apiBaseUrl) {
-      const isSecure = apiBaseUrl.startsWith('https:');
+      const trimmed = apiBaseUrl.trim();
+      const isSecure = trimmed.startsWith('https:');
       const wsProtocol = isSecure ? 'wss:' : 'ws:';
-      const cleanHost = apiBaseUrl.replace(/^(https?:\/\/)/, '').replace(/\/api\/?$/, '');
+      const cleanHost = trimmed.replace(/^(https?:\/\/)/i, '').replace(/\/api\/?$/i, '');
       return `${wsProtocol}//${cleanHost}/ws/signaling${tokenParam}`;
     } else {
       const isSecure = window.location.protocol === 'https:';
