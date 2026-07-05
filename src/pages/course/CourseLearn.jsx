@@ -75,6 +75,36 @@ const CourseLearn = () => {
     "Show practice exercise"
   ];
 
+  // Render Gemini markdown to HTML for the chat bubbles
+  const renderMarkdown = (text) => {
+    if (!text) return '';
+    let html = text
+      // Code blocks ```lang\ncode```
+      .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
+        `<pre class="ai-code-block"><code>${code.trim().replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></pre>`
+      )
+      // Inline code `code`
+      .replace(/`([^`]+)`/g, '<code class="ai-inline-code">$1</code>')
+      // Bold **text**
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      // Italic *text*
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      // Numbered list lines
+      .replace(/^(\d+)\. (.+)$/gm, '<li class="ai-list-item ai-numbered"><span class="ai-num">$1.</span> $2</li>')
+      // Bullet list lines
+      .replace(/^[•\-] (.+)$/gm, '<li class="ai-list-item">$1</li>')
+      // Wrap consecutive <li> in <ul> or <ol>
+      .replace(/(<li[^>]*>.*?<\/li>\n?)+/gs, (match) => `<ul class="ai-list">${match}</ul>`)
+      // Headings ## and ###
+      .replace(/^### (.+)$/gm, '<h4 class="ai-h4">$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3 class="ai-h3">$1</h3>')
+      // Paragraphs: double newline → paragraph break
+      .replace(/\n{2,}/g, '</p><p class="ai-para">')
+      // Single newlines → line break
+      .replace(/\n/g, '<br/>');
+    return `<p class="ai-para">${html}</p>`;
+  };
+
   const showToast = (type, message) => {
     setToast({ show: true, type, message });
     setTimeout(() => setToast({ show: false, type: 'success', message: '' }), 4000);
@@ -348,7 +378,7 @@ const CourseLearn = () => {
     setChatLoading(true);
 
     try {
-      const response = await api.post('/ai/chat?provider=mock', { message: userMsg.message });
+      const response = await api.post('/ai/chat?provider=gemini', { message: userMsg.message });
       if (response.data.success) {
         setChatMessages(prev => (prev || []).map(m => m.isTemp ? response.data.data : m));
       }
@@ -1243,9 +1273,10 @@ const CourseLearn = () => {
                   {/* AI Response */}
                   {msg.response && (
                     <div className="flex justify-start">
-                      <div className="bg-primary-600/10 border border-primary-600/20 text-violet-300 rounded-2xl rounded-tl-none px-4 py-2.5 text-xs max-w-[85%] leading-relaxed whitespace-pre-wrap">
-                        {msg.response}
-                      </div>
+                      <div
+                        className="bg-primary-600/10 border border-primary-600/20 text-violet-200 rounded-2xl rounded-tl-none px-4 py-3 text-xs max-w-[90%] leading-relaxed ai-response-bubble"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.response) }}
+                      />
                     </div>
                   )}
                 </div>

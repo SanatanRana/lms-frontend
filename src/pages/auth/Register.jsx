@@ -10,12 +10,9 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Clear any existing session token/role when opening the registration page
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userName');
-  }, []);
+  // NOTE: We intentionally do NOT clear localStorage here.
+  // Clearing auth tokens on register page load would silently log out
+  // any already-authenticated user (e.g., admin accidentally visiting /register).
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });

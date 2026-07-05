@@ -33,9 +33,12 @@ api.interceptors.response.use(
       const isAuthEndpoint = requestUrl.includes('/auth/');
       
       if (!isAuthEndpoint) {
+        // Clear ALL session data to prevent stale state
         localStorage.removeItem('token');
         localStorage.removeItem('role');
+        localStorage.removeItem('userId');
         localStorage.removeItem('userName');
+        localStorage.removeItem('userEmail');
         window.location.href = '/login';
       }
     }
