@@ -238,8 +238,8 @@ const StudentDashboard = () => {
               }
             }}
             className={`pb-3 text-xs font-bold border-b-2 transition relative flex items-center space-x-1.5 cursor-pointer ${activeTab === tab.id
-                ? 'border-primary-600 text-primary-400'
-                : 'border-transparent text-text-muted hover:text-white'
+              ? 'border-primary-600 text-primary-400'
+              : 'border-transparent text-text-muted hover:text-white'
               }`}
           >
             <span>{tab.label}</span>
@@ -323,7 +323,7 @@ const StudentDashboard = () => {
                           <p className="text-text-muted text-[10px] line-clamp-2 leading-relaxed">{enroll.course.description}</p>
                         </div>
                       </div>
-                      
+
                       <div className="p-4 pt-0 space-y-3.5">
                         <div>
                           <div className="flex justify-between items-center text-[9px] font-bold text-slate-455 mb-1">
@@ -335,8 +335,8 @@ const StudentDashboard = () => {
                           <div className="w-full bg-surface-700 h-1 rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all duration-300 ${enroll.progressPercent >= 100
-                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
-                                  : 'bg-gradient-to-r from-primary-500 to-teal-400'
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                                : 'bg-gradient-to-r from-primary-500 to-teal-400'
                                 }`}
                               style={{ width: `${enroll.progressPercent}%` }}
                             ></div>
@@ -459,8 +459,8 @@ const StudentDashboard = () => {
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition whitespace-nowrap select-none cursor-pointer border ${selectedCategory === cat
-                      ? 'bg-primary border-primary text-white shadow'
-                      : 'bg-background border-border text-slate-400 hover:text-white'
+                    ? 'bg-primary border-primary text-white shadow'
+                    : 'bg-background border-border text-slate-400 hover:text-white'
                     }`}
                 >
                   {cat === 'ALL' ? '💻 All Subjects' : cat}
@@ -515,8 +515,8 @@ const StudentDashboard = () => {
                           <div className="w-full bg-surface-700 h-1.5 rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full transition-all duration-300 ${enroll.progressPercent >= 100
-                                  ? 'bg-gradient-to-r from-success to-emerald-400'
-                                  : 'bg-gradient-to-r from-primary-500 to-teal-400'
+                                ? 'bg-gradient-to-r from-success to-emerald-400'
+                                : 'bg-gradient-to-r from-primary-500 to-teal-400'
                                 }`}
                               style={{ width: `${enroll.progressPercent}%` }}
                             ></div>
@@ -557,7 +557,7 @@ const StudentDashboard = () => {
             if (!matchesCourse) return false;
 
             const isPast = new Date(session.endTime || session.startTime) < new Date();
-            
+
             if (liveStatusFilter === 'ALL') {
               return session.status === 'LIVE' || (session.status === 'SCHEDULED' && !isPast);
             }
@@ -581,7 +581,7 @@ const StudentDashboard = () => {
               const todayStr = new Date().toDateString();
               const tomorrowStr = new Date(Date.now() + 86400000).toDateString();
               const sessionDateStr = d.toDateString();
-              
+
               let groupKey = sessionDateStr;
               if (sessionDateStr === todayStr) {
                 groupKey = 'Today';
@@ -590,7 +590,7 @@ const StudentDashboard = () => {
               } else {
                 groupKey = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
               }
-              
+
               if (!groups[groupKey]) {
                 groups[groupKey] = [];
               }
@@ -631,11 +631,10 @@ const StudentDashboard = () => {
                         key={tab.id}
                         type="button"
                         onClick={() => setLiveStatusFilter(tab.id)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition whitespace-nowrap cursor-pointer select-none ${
-                          liveStatusFilter === tab.id
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition whitespace-nowrap cursor-pointer select-none ${liveStatusFilter === tab.id
                             ? 'bg-primary text-white shadow'
                             : 'text-slate-400 hover:text-white'
-                        }`}
+                          }`}
                       >
                         {tab.label}
                       </button>
@@ -651,11 +650,10 @@ const StudentDashboard = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedLiveCourse('ALL')}
-                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition whitespace-nowrap select-none cursor-pointer border-border ${
-                          selectedLiveCourse === 'ALL'
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition whitespace-nowrap select-none cursor-pointer border-border ${selectedLiveCourse === 'ALL'
                             ? 'bg-teal-500 border-teal-500 text-white shadow'
                             : 'bg-background text-slate-450 hover:text-white'
-                        }`}
+                          }`}
                       >
                         All Courses
                       </button>
@@ -664,11 +662,10 @@ const StudentDashboard = () => {
                           key={course.id}
                           type="button"
                           onClick={() => setSelectedLiveCourse(course.id)}
-                          className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition whitespace-nowrap select-none cursor-pointer border-border ${
-                            selectedLiveCourse.toString() === course.id.toString()
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition whitespace-nowrap select-none cursor-pointer border-border ${selectedLiveCourse.toString() === course.id.toString()
                               ? 'bg-teal-500 border-teal-500 text-white shadow'
                               : 'bg-background text-slate-450 hover:text-white'
-                          }`}
+                            }`}
                         >
                           {course.title}
                         </button>
@@ -712,11 +709,10 @@ const StudentDashboard = () => {
                           return (
                             <div
                               key={session.id}
-                              className={`border rounded-2xl p-5 flex flex-col justify-between transition-all bg-card/45 duration-300 relative overflow-hidden group ${
-                                isLive
+                              className={`border rounded-2xl p-5 flex flex-col justify-between transition-all bg-card/45 duration-300 relative overflow-hidden group ${isLive
                                   ? 'border-rose-500/35 bg-rose-500/5 shadow-lg shadow-rose-500/5'
                                   : 'border-border hover:border-slate-700/50 card-hover'
-                              }`}
+                                }`}
                               style={{
                                 borderLeftWidth: '4px',
                                 borderLeftColor: isLive ? 'var(--color-error)' : 'var(--color-primary-500)'
@@ -757,11 +753,10 @@ const StudentDashboard = () => {
                                 </div>
                                 <button
                                   onClick={() => handleJoinLive(session.id, session)}
-                                  className={`text-[9px] font-black px-4 py-2 rounded-xl transition cursor-pointer select-none shrink-0 tracking-wide uppercase ${
-                                    isLive
+                                  className={`text-[9px] font-black px-4 py-2 rounded-xl transition cursor-pointer select-none shrink-0 tracking-wide uppercase ${isLive
                                       ? 'bg-error hover:bg-error/95 text-white shadow-md shadow-error/15 hover:scale-102'
                                       : 'bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 hover:scale-102'
-                                  }`}
+                                    }`}
                                 >
                                   {isLive ? 'Join Lecture' : 'Enter Lobby'}
                                 </button>
@@ -856,8 +851,8 @@ const StudentDashboard = () => {
               <div
                 key={ach.id}
                 className={`p-4.5 rounded-2xl border transition duration-300 flex items-center space-x-4 bg-card/65 ${ach.unlocked
-                    ? 'border-teal-500/25 bg-teal-950/5'
-                    : 'border-border opacity-50 grayscale'
+                  ? 'border-teal-500/25 bg-teal-950/5'
+                  : 'border-border opacity-50 grayscale'
                   }`}
               >
                 <span className="text-3xl">{ach.icon}</span>

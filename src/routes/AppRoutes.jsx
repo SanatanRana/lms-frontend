@@ -11,6 +11,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 const Home = lazy(() => import('../pages/Home'));
 const Login = lazy(() => import('../pages/auth/Login'));
 const Register = lazy(() => import('../pages/auth/Register'));
+const ResetPassword = lazy(() => import('../pages/auth/ResetPassword'));
 const Dashboard = lazy(() => import('../pages/dashboard/Dashboard'));
 const CreateCourse = lazy(() => import('../pages/course/CreateCourse'));
 const CourseDetail = lazy(() => import('../pages/course/CourseDetail'));
@@ -66,6 +67,7 @@ const AppRoutes = () => {
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
         </Route>
 
         {/* Dashboard View Layout */}

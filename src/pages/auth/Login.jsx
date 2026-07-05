@@ -45,7 +45,7 @@ const Login = () => {
     }
   };
 
-  const handleForgotSubmit = (e) => {
+  const handleForgotSubmit = async (e) => {
     e.preventDefault();
     if (!forgotEmail.trim()) {
       setErrorMsg('Please enter your email address');
@@ -53,13 +53,18 @@ const Login = () => {
     }
     setErrorMsg('');
     setLoading(true);
-    
-    // Simulate API request for premium UX
-    setTimeout(() => {
-      setLoading(false);
-      setSuccessMsg(`A password reset link has been sent to ${forgotEmail}`);
+    try {
+      // Real API call to backend forgot-password endpoint
+      await api.post('/auth/forgot-password', { email: forgotEmail.trim() });
+      setSuccessMsg(`If an account exists with ${forgotEmail}, a password reset link has been sent.`);
       setView('forgot-success');
-    }, 1200);
+    } catch (error) {
+      // Even on error, show success message for security (email enumeration prevention)
+      setSuccessMsg(`If an account exists with ${forgotEmail}, a password reset link has been sent.`);
+      setView('forgot-success');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
