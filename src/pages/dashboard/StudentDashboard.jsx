@@ -237,7 +237,7 @@ const StudentDashboard = () => {
                 navigate(`/dashboard?tab=${tab.id}`);
               }
             }}
-            className={`pb-3 text-xs font-bold border-b-2 transition relative flex items-center space-x-1.5 cursor-pointer ${activeTab === tab.id
+            className={`pb-3 text-xs font-bold border-b-2 transition relative flex items-center space-x-1.5 cursor-pointer shrink-0 ${activeTab === tab.id
               ? 'border-primary-600 text-primary-400'
               : 'border-transparent text-text-muted hover:text-white'
               }`}
@@ -458,7 +458,7 @@ const StudentDashboard = () => {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition whitespace-nowrap select-none cursor-pointer border ${selectedCategory === cat
+                  className={`px-4 py-1.5 rounded-xl text-[10px] font-bold transition whitespace-nowrap select-none cursor-pointer border shrink-0 ${selectedCategory === cat
                     ? 'bg-primary border-primary text-white shadow'
                     : 'bg-background border-border text-slate-400 hover:text-white'
                     }`}
@@ -605,7 +605,7 @@ const StudentDashboard = () => {
           return (
             <div className="space-y-6">
               {/* Controls bar */}
-              <div className="bg-card border border-border p-5 rounded-3xl space-y-4 shadow-md">
+              <div className="bg-card border border-border p-4 sm:p-5 rounded-3xl space-y-4 shadow-md">
                 {/* Search & Status Filters */}
                 <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
                   <div className="relative flex-1 max-w-md">
@@ -621,7 +621,7 @@ const StudentDashboard = () => {
                     />
                   </div>
 
-                  <div className="flex space-x-1.5 self-start md:self-auto shrink-0 bg-background/50 border border-border p-1 rounded-xl">
+                  <div className="flex overflow-x-auto scrollbar-none max-w-full space-x-1.5 self-start md:self-auto bg-background/50 border border-border p-1 rounded-xl">
                     {[
                       { id: 'ALL', label: 'All Classes' },
                       { id: 'LIVE', label: '🔴 Live Now' },
@@ -631,7 +631,7 @@ const StudentDashboard = () => {
                         key={tab.id}
                         type="button"
                         onClick={() => setLiveStatusFilter(tab.id)}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition whitespace-nowrap cursor-pointer select-none ${liveStatusFilter === tab.id
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition whitespace-nowrap cursor-pointer select-none shrink-0 ${liveStatusFilter === tab.id
                             ? 'bg-primary text-white shadow'
                             : 'text-slate-400 hover:text-white'
                           }`}
