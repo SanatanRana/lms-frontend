@@ -35,6 +35,9 @@ const CourseLearn = () => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [threads, setThreads] = useState([]);
+  const [activeThreadId, setActiveThreadId] = useState(null);
+  const [showThreadList, setShowThreadList] = useState(false);
 
   // Assignment submission state
   const [submitForm, setSubmitForm] = useState({ assignmentId: '', submissionUrl: '', answerText: '' });
@@ -180,12 +183,24 @@ const CourseLearn = () => {
       setAssignments([]);
     }
 
-    // 6. AI Chat history
+    // 6. AI Chat threads
     try {
-      const chatResp = await api.get('/ai/history');
-      setChatMessages(chatResp.data?.data || []);
+      const threadsResp = await api.get(`/ai/threads?courseId=${id}`);
+      const courseThreads = threadsResp.data?.data || [];
+      setThreads(courseThreads);
+      if (courseThreads.length > 0) {
+        const firstThread = courseThreads[0];
+        setActiveThreadId(firstThread.id);
+        const chatResp = await api.get(`/ai/history?threadId=${firstThread.id}`);
+        setChatMessages(chatResp.data?.data || []);
+      } else {
+        setActiveThreadId(null);
+        setChatMessages([]);
+      }
     } catch (error) {
-      console.error("Error fetching AI history:", error);
+      console.error("Error fetching AI threads:", error);
+      setThreads([]);
+      setActiveThreadId(null);
       setChatMessages([]);
     }
 
@@ -378,9 +393,20 @@ const CourseLearn = () => {
     setChatLoading(true);
 
     try {
-      const response = await api.post('/ai/chat?provider=gemini', { message: userMsg.message });
+      const payload = { message: userMsg.message };
+      if (activeThreadId) {
+        payload.threadId = activeThreadId;
+      } else {
+        payload.courseId = parseInt(id);
+      }
+      const response = await api.post('/ai/chat', payload);
       if (response.data.success) {
-        setChatMessages(prev => (prev || []).map(m => m.isTemp ? response.data.data : m));
+        const returnedMsg = response.data.data;
+        if (!activeThreadId && returnedMsg.thread) {
+          setActiveThreadId(returnedMsg.thread.id);
+          fetchThreadsOnly();
+        }
+        setChatMessages(prev => (prev || []).map(m => m.isTemp ? returnedMsg : m));
       }
     } catch (error) {
       console.error("AI Chat failed:", error);
@@ -388,6 +414,51 @@ const CourseLearn = () => {
       showToast('error', 'AI Assistant connection timeout.');
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  const fetchThreadsOnly = async () => {
+    try {
+      const threadsResp = await api.get(`/ai/threads?courseId=${id}`);
+      setThreads(threadsResp.data?.data || []);
+    } catch (error) {
+      console.error("Error fetching threads:", error);
+    }
+  };
+
+  const selectThread = async (threadId) => {
+    setActiveThreadId(threadId);
+    setChatLoading(true);
+    setShowThreadList(false);
+    try {
+      const chatResp = await api.get(`/ai/history?threadId=${threadId}`);
+      setChatMessages(chatResp.data?.data || []);
+    } catch (error) {
+      console.error("Error fetching thread history:", error);
+      setChatMessages([]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const startNewChat = () => {
+    setActiveThreadId(null);
+    setChatMessages([]);
+    setShowThreadList(false);
+  };
+
+  const handleDeleteThread = async (threadId, e) => {
+    e.stopPropagation();
+    try {
+      await api.delete(`/ai/threads/${threadId}`);
+      showToast('success', 'Chat session deleted');
+      if (activeThreadId === threadId) {
+        startNewChat();
+      }
+      fetchThreadsOnly();
+    } catch (error) {
+      console.error("Failed to delete thread:", error);
+      showToast('error', 'Failed to delete chat session');
     }
   };
 
@@ -1007,7 +1078,7 @@ const CourseLearn = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-3.5 text-xs font-bold transition border-b-2 whitespace-nowrap cursor-pointer ${activeTab === tab.id
+                className={`px-5 py-3.5 text-xs font-bold transition border-b-2 whitespace-nowrap cursor-pointer shrink-0 ${activeTab === tab.id
                     ? 'border-primary-600 text-primary-400 bg-primary-600/5'
                     : 'border-transparent text-slate-400 hover:text-white'
                   }`}
@@ -1224,74 +1295,145 @@ const CourseLearn = () => {
       </div>
 
       {/* Floating AI Doubt Solver Trigger FAB */}
-      <button
-        onClick={() => setShowAiChat(!showAiChat)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-primary-light flex items-center justify-center text-white shadow-xl shadow-primary-600/30 hover:scale-105 transition z-40 select-none cursor-pointer"
-        title="Open AI Doubt Assistant"
-      >
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-      </button>
+      <div className="fixed bottom-20 lg:bottom-6 right-6 z-40">
+        {/* Pulsing ring animation for premium AI look */}
+        <span className="absolute inset-0 rounded-full bg-primary-600/30 animate-ping duration-[2000ms]"></span>
+        <button
+          onClick={() => setShowAiChat(!showAiChat)}
+          className="relative w-14 h-14 rounded-full bg-gradient-to-tr from-primary-600 to-primary-light flex items-center justify-center text-white shadow-2xl shadow-primary-600/40 hover:scale-110 active:scale-95 transition-all z-10 select-none cursor-pointer border border-white/10"
+          title="Open AI Doubt Assistant"
+        >
+          <svg className="w-6.5 h-6.5 drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </button>
+      </div>
 
       {/* ══════════════════ MOBILE-NATIVE AI DOUBT DRAWER OVERLAY ══════════════════ */}
       {showAiChat && (
         <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[450px] bg-surface-800 border-l border-surface-600 shadow-2xl flex flex-col z-50 animate-slide-in">
           {/* Header */}
-          <div className="p-4.5 border-b border-surface-600 flex justify-between items-center bg-background/50">
-            <div>
-              <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest">AI Doubt assistant</span>
-              <h3 className="font-extrabold text-sm text-white mt-0.5">LearnGen AI Tutor</h3>
+          <div className="p-4 border-b border-surface-600 flex justify-between items-center bg-background/50 select-none">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              {/* Toggle Recents Button */}
+              <button
+                onClick={() => setShowThreadList(!showThreadList)}
+                className={`p-1.5 rounded-lg border transition shrink-0 ${showThreadList ? 'bg-primary-600/20 border-primary-600 text-primary-400' : 'bg-surface-700/50 border-surface-600 text-slate-400 hover:text-white'} cursor-pointer`}
+                title="Toggle Past Chats"
+              >
+                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+
+              <div className="min-w-0">
+                <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest block">AI Doubt assistant</span>
+                <h3 className="font-extrabold text-[11px] text-white truncate max-w-[140px] mt-0.5">
+                  {activeThreadId ? (threads.find(t => t.id === activeThreadId)?.title || "Current Chat") : "New Chat"}
+                </h3>
+              </div>
             </div>
-            <button
-              onClick={() => setShowAiChat(false)}
-              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+
+            <div className="flex items-center space-x-1.5 shrink-0">
+              {/* New Chat Button */}
+              <button
+                onClick={startNewChat}
+                className="flex items-center space-x-1 px-2.5 py-1.5 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white rounded-lg text-[9px] font-black uppercase shadow-md shadow-teal-500/10 cursor-pointer"
+                title="Start New Chat"
+              >
+                <span>+</span>
+                <span>New Chat</span>
+              </button>
+
+              {/* Close Drawer Button */}
+              <button
+                onClick={() => setShowAiChat(false)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/5 cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
-          {/* Chat Messages */}
-          <div className="flex-grow overflow-y-auto p-4.5 space-y-4">
-            {(chatMessages || []).length === 0 ? (
-              <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2">
-                <span className="text-3xl block">🤖</span>
-                <p className="font-extrabold text-white">Ask me anything!</p>
-                <p className="leading-relaxed">I can answer code questions, write code templates, or explain syllabus points.</p>
-              </div>
-            ) : (
-              (chatMessages || []).map((msg, idx) => (
-                <div key={idx} className="space-y-3">
-                  {/* Student Msg */}
-                  <div className="flex justify-end">
-                    <div className="bg-surface-700 border border-surface-600 text-slate-200 rounded-2xl rounded-tr-none px-4 py-2.5 text-xs max-w-[85%] leading-relaxed">
-                      {msg.message}
+          {/* Chat Messages or Threads List */}
+          {showThreadList ? (
+            <div className="flex-grow overflow-y-auto p-4.5 space-y-2 bg-surface-900/20">
+              <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block mb-2 px-1">Recents</span>
+              {threads.length === 0 ? (
+                <div className="text-center py-16 text-slate-500 text-xs">
+                  <span className="text-3xl block mb-2">💬</span>
+                  <p className="font-extrabold text-white">No past conversations</p>
+                  <p className="text-[10px] mt-1 text-slate-600">Start asking doubts to save your chats.</p>
+                </div>
+              ) : (
+                threads.map(thread => (
+                  <div
+                    key={thread.id}
+                    onClick={() => selectThread(thread.id)}
+                    className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer select-none ${activeThreadId === thread.id
+                      ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 shadow'
+                      : 'bg-surface-850 border-surface-650 text-slate-350 hover:bg-surface-700/60 hover:text-white'
+                      }`}
+                  >
+                    <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                      <span className="text-xs shrink-0">💬</span>
+                      <span className="text-[11px] font-bold truncate pr-2">{thread.title}</span>
                     </div>
+                    <button
+                      onClick={(e) => handleDeleteThread(thread.id, e)}
+                      className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-white/5 cursor-pointer shrink-0 transition"
+                      title="Delete Chat"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
-                  {/* AI Response */}
-                  {msg.response && (
-                    <div className="flex justify-start">
-                      <div
-                        className="bg-primary-600/10 border border-primary-600/20 text-violet-200 rounded-2xl rounded-tl-none px-4 py-3 text-xs max-w-[90%] leading-relaxed ai-response-bubble"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.response) }}
-                      />
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="flex-grow overflow-y-auto p-4.5 space-y-4">
+              {(chatMessages || []).length === 0 ? (
+                <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2">
+                  <span className="text-3xl block">🤖</span>
+                  <p className="font-extrabold text-white">Ask me anything!</p>
+                  <p className="leading-relaxed">I can answer code questions, write code templates, or explain syllabus points.</p>
+                </div>
+              ) : (
+                (chatMessages || []).map((msg, idx) => (
+                  <div key={idx} className="space-y-3">
+                    {/* Student Msg */}
+                    <div className="flex justify-end">
+                      <div className="bg-surface-700 border border-surface-600 text-slate-200 rounded-2xl rounded-tr-none px-4 py-2.5 text-xs max-w-[85%] leading-relaxed">
+                        {msg.message}
+                      </div>
                     </div>
-                  )}
+                    {/* AI Response */}
+                    {msg.response && (
+                      <div className="flex justify-start">
+                        <div
+                          className="bg-primary-600/10 border border-primary-600/20 text-violet-200 rounded-2xl rounded-tl-none px-4 py-3 text-xs max-w-[90%] leading-relaxed ai-response-bubble"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.response) }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              {chatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                  </div>
                 </div>
-              ))
-            )}
-            {chatLoading && (
-              <div className="flex justify-start">
-                <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Quick suggestion chips */}
           <div className="px-4.5 py-2.5 bg-background/25 border-t border-border flex items-center space-x-2 overflow-x-auto scrollbar-none shrink-0">
@@ -1299,7 +1441,7 @@ const CourseLearn = () => {
               <button
                 key={chip}
                 onClick={() => submitToAi(chip)}
-                className="bg-card hover:bg-card-light text-[10px] text-teal-400 border border-border px-3 py-1.5 rounded-xl whitespace-nowrap font-bold transition select-none cursor-pointer"
+                className="bg-card hover:bg-card-light text-[10px] text-teal-400 border border-border px-3 py-1.5 rounded-xl whitespace-nowrap font-bold transition select-none cursor-pointer shrink-0"
               >
                 {chip}
               </button>

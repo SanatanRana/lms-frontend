@@ -1042,7 +1042,7 @@ const TeacherDashboard = () => {
                         key={tab.id}
                         type="button"
                         onClick={() => setLiveFilter(tab.id)}
-                        className={`px-3 py-1 rounded-lg text-[9px] font-bold transition whitespace-nowrap cursor-pointer select-none ${
+                        className={`px-3 py-1 rounded-lg text-[9px] font-bold transition whitespace-nowrap cursor-pointer select-none shrink-0 ${
                           liveFilter === tab.id
                             ? 'bg-primary text-white shadow'
                             : 'bg-background border border-border text-slate-400 hover:text-white'

@@ -85,7 +85,7 @@ const Home = () => {
         {/* Search Bar */}
         <div className="px-4 md:px-6 max-w-7xl mx-auto mt-4 mb-6">
           <form onSubmit={handleSearch} className="flex items-center bg-surface-800 border border-surface-600 rounded-2xl p-1.5 shadow-xl shadow-black/20">
-            <svg className="w-5 h-5 text-slate-500 ml-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-slate-500 ml-2.5 mr-1 sm:ml-3 sm:mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -93,11 +93,11 @@ const Home = () => {
               placeholder="What do you want to learn today?"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent px-3 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent px-1.5 sm:px-3 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none"
             />
             <button
               type="submit"
-              className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition"
+              className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-3 sm:px-6 py-2.5 rounded-xl text-sm font-semibold transition shrink-0"
             >
               Search
             </button>
@@ -235,7 +235,7 @@ const Home = () => {
 
           {/* Search Bar */}
           <form onSubmit={handleSearch} className="max-w-2xl mx-auto flex items-center bg-surface-800 border border-surface-600 rounded-2xl p-1.5 shadow-xl shadow-black/20 mb-6">
-            <svg className="w-5 h-5 text-slate-500 ml-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-slate-500 ml-2.5 mr-1 sm:ml-3 sm:mr-2 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             <input
@@ -243,11 +243,11 @@ const Home = () => {
               placeholder="What do you want to learn today?"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent px-3 py-2 md:py-3 text-white placeholder-slate-500 text-sm focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent px-1.5 sm:px-3 py-2 md:py-3 text-white placeholder-slate-500 text-sm focus:outline-none"
             />
             <button
               type="submit"
-              className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-6 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition shadow-lg shadow-primary-600/20"
+              className="bg-gradient-to-r from-primary-600 to-primary-light hover:from-primary-500 hover:to-primary-light text-white px-3 sm:px-6 py-2.5 md:py-3 rounded-xl text-sm font-semibold transition shrink-0 shadow-lg shadow-primary-600/20"
             >
               Search
             </button>
