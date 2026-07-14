@@ -714,7 +714,7 @@ const CourseLearn = () => {
     }
   };
 
-  const renderVideoPlayer = (url, title) => {
+  const renderVideoPlayer = (url, title, isMini = false) => {
     if (!url) return null;
 
     // Check if YouTube/Vimeo embed
@@ -734,12 +734,21 @@ const CourseLearn = () => {
       );
     }
 
-    // HTML5 native video player with Custom Overlay UI
+    // HTML5 native video player with Premium YouTube-Style Controls
     return (
       <div
-        ref={playerContainerRef}
-        onClick={() => setShowControls(prev => !prev)}
-        className="video-player-container w-full h-full relative group bg-black flex items-center justify-center cursor-pointer select-none overflow-hidden"
+        ref={isMini ? null : playerContainerRef}
+        onClick={(e) => {
+          if (isMini) {
+            e.stopPropagation();
+            togglePlay();
+          } else {
+            setShowControls(prev => !prev);
+          }
+        }}
+        className={`video-player-container w-full h-full relative group bg-black flex items-center justify-center select-none overflow-hidden ${
+          isMini ? 'cursor-pointer' : 'cursor-default'
+        }`}
       >
         <video
           ref={videoRef}
@@ -749,62 +758,54 @@ const CourseLearn = () => {
           onEnded={handleMarkComplete}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          className="w-full h-full object-contain bg-black"
+          className="w-full h-full object-contain bg-black pointer-events-none"
         />
 
-        {/* Centered Controls Overlay (Large touch targets for mobile/gesture control) */}
-        <div
-          className={`absolute inset-0 bg-black/45 flex items-center justify-center space-x-6 z-10 transition-opacity duration-300 ${showControls ? 'opacity-100 font-bold' : 'opacity-0 pointer-events-none'
-            }`}
-        >
-          {/* Rewind 10s */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (videoRef.current) {
-                const back = Math.max(0, videoRef.current.currentTime - 10);
-                safeSeek(back);
-                setCurrentTime(back);
-              }
-            }}
-            className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs transition-transform active:scale-95 cursor-pointer shadow-lg border border-white/5"
-            title="Rewind 10s"
-          >
-            ↺ 10s
-          </button>
+        {/* ── DOUBLE-CLICK SEEK OVERLAYS (Invisible gesture zones) ── */}
+        {!isMini && (
+          <>
+            <div
+              className="absolute left-0 top-0 bottom-0 w-1/2 z-5 active:bg-white/5 transition-colors cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (e.detail === 1) {
+                  setShowControls(prev => !prev);
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                handleDoubleSeek('back');
+              }}
+            />
+            <div
+              className="absolute right-0 top-0 bottom-0 w-1/2 z-5 active:bg-white/5 transition-colors cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (e.detail === 1) {
+                  setShowControls(prev => !prev);
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                handleDoubleSeek('fwd');
+              }}
+            />
+          </>
+        )}
 
-          {/* Large Play/Pause */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePlay();
-            }}
-            className="w-16 h-16 rounded-full bg-teal-500 hover:bg-teal-400 flex items-center justify-center text-white text-xl transition-transform active:scale-95 cursor-pointer shadow-2xl border border-white/10"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
+        {/* ── SKIP DOUBLE-TAP FEEDBACK RIPPLE ── */}
+        {!isMini && skipIndicator.show && (
+          <div className={`absolute top-1/2 -translate-y-1/2 rounded-full w-24 h-24 bg-white/10 flex flex-col items-center justify-center z-25 pointer-events-none transition-all duration-300 scale-110 opacity-100 ${
+            skipIndicator.dir === 'back' ? 'left-1/4' : 'right-1/4'
+          }`}>
+            <span className="text-white text-lg font-bold">{skipIndicator.dir === 'back' ? '◀◀' : '▶▶'}</span>
+            <span className="text-white text-[10px] font-black uppercase mt-1">10s</span>
+          </div>
+        )}
 
-          {/* Forward 10s */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (videoRef.current) {
-                const fwd = Math.min(duration, videoRef.current.currentTime + 10);
-                safeSeek(fwd);
-                setCurrentTime(fwd);
-              }
-            }}
-            className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs transition-transform active:scale-95 cursor-pointer shadow-lg border border-white/5"
-            title="Forward 10s"
-          >
-            10s ↻
-          </button>
-        </div>
-
-        {/* Buffer loading spinner overlay */}
+        {/* ── BUFFER LOADING SPINNER OVERLAY ── */}
         {buffering && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-15">
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-30 pointer-events-none">
             <svg className="animate-spin h-10 w-10 text-teal-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -812,146 +813,397 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Control Bar Overlay */}
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={`control-bar absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        {/* ── CLOSED CAPTIONS MOCK SUBTITLES ── */}
+        {!isMini && showCc && getCaptionText(currentTime) && (
+          <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/85 border border-white/5 px-4 py-1.5 rounded-xl text-white text-[11px] md:text-xs font-bold text-center z-15 select-none pointer-events-none max-w-[85%] leading-relaxed transition-opacity">
+            {getCaptionText(currentTime)}
+          </div>
+        )}
+
+        {/* ── MINI-PLAYER CONTROLS ── */}
+        {isMini && (
+          <div className="absolute inset-0 bg-black/45 flex items-center justify-center group-hover/mini:opacity-100 opacity-0 transition-opacity z-20">
+            {/* Restore Button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleMiniPlayer(); }}
+              className="absolute top-2 left-2 bg-black/75 hover:bg-black text-white p-1.5 rounded-lg border border-white/5 text-[10px] font-black uppercase transition cursor-pointer"
+              title="Expand Player"
+            >
+              ⤢ Restore
+            </button>
+            {/* Close button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleStopVideo(e); setIsMiniPlayer(false); }}
+              className="absolute top-2 right-2 bg-black/75 hover:bg-black text-white w-6 h-6 flex items-center justify-center rounded-lg border border-white/5 text-xs font-black transition cursor-pointer"
+              title="Close Player"
+            >
+              ✕
+            </button>
+            {/* Center Play/Pause */}
+            <button
+              onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+              className="w-10 h-10 rounded-full bg-teal-500 text-white flex items-center justify-center text-sm shadow-lg border border-white/5 active:scale-95 transition"
+            >
+              {isPlaying ? '⏸' : '▶'}
+            </button>
+            {/* Bottom mini scrubber */}
+            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-slate-800">
+              <div
+                className="h-full bg-teal-500 transition-all duration-100"
+                style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
+        {/* ── FULL YOUTUBE OVERLAY CONTROLS (Only when not mini-player) ── */}
+        {!isMini && (
+          <div
+            className={`absolute inset-0 bg-black/35 flex flex-col justify-between p-4 z-10 transition-opacity duration-300 ${
+              showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
-        >
-          {/* Progress timeline scrubber */}
-          <div className="flex items-center space-x-3">
-            <span className="text-[10px] text-slate-300 font-mono">{formatTime(currentTime)}</span>
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              value={currentTime}
-              onChange={handleScrub}
-              className="flex-grow h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400"
-            />
-            <span className="text-[10px] text-slate-300 font-mono">{formatTime(duration)}</span>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {/* Play Pause */}
-              <button onClick={togglePlay} className="text-white hover:text-teal-400 text-sm transition cursor-pointer">
-                {isPlaying ? '⏸' : '▶'}
-              </button>
-
-              {/* Stop Video */}
+          >
+            {/* ════════ TOP OVERLAY BAR ════════ */}
+            <div className="flex items-center justify-between w-full" onClick={(e) => e.stopPropagation()}>
+              {/* Left Minimize Chevron */}
               <button
-                onClick={handleStopVideo}
-                className="text-rose-400 hover:text-rose-300 text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 px-2 py-0.5 rounded-lg transition cursor-pointer"
-                title="Stop Video"
+                onClick={toggleMiniPlayer}
+                className="p-2 bg-black/45 hover:bg-black/60 rounded-xl text-white border border-white/5 hover:scale-105 active:scale-95 transition cursor-pointer flex items-center space-x-1"
+                title="Minimize player"
               >
-                ⏹ Stop
+                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+                <span className="text-[10px] font-black uppercase">Mini</span>
               </button>
 
-              {/* Back 10s */}
-              <button
-                onClick={() => { if (videoRef.current) { const back = Math.max(0, videoRef.current.currentTime - 10); safeSeek(back); setCurrentTime(back); } }}
-                className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
-                title="Rewind 10s"
-              >
-                ↺ 10s
-              </button>
-
-              {/* Forward 10s */}
-              <button
-                onClick={() => { if (videoRef.current) { const fwd = Math.min(duration, videoRef.current.currentTime + 10); safeSeek(fwd); setCurrentTime(fwd); } }}
-                className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
-                title="Forward 10s"
-              >
-                10s ↻
-              </button>
-
-              {/* Mute Volume */}
-              <div className="flex items-center space-x-2 group/vol">
-                <button onClick={toggleMute} className="text-white hover:text-teal-400 text-xs cursor-pointer">
-                  {isMuted ? '🔇' : '🔊'}
+              {/* Right Menu Icons */}
+              <div className="flex items-center space-x-2">
+                {/* Cast Mock */}
+                <button
+                  onClick={() => showToast('info', 'Searching for local Cast screen devices...')}
+                  className="p-2 bg-black/45 hover:bg-black/60 text-white rounded-xl border border-white/5 hover:scale-105 active:scale-95 transition cursor-pointer"
+                  title="Screen Cast"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 17a5 5 0 015-5M8 12a10 10 0 0110 10m-10-10a15 15 0 0115 15M3 19a1 1 0 112 0 1 1 0 01-2 0z" />
+                  </svg>
                 </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={isMuted ? 0 : volume}
-                  onChange={handleVolumeChange}
-                  className="w-16 h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400 opacity-0 group-hover/vol:opacity-100 transition-opacity"
-                />
+
+                {/* CC Button */}
+                <button
+                  onClick={() => { setShowCc(!showCc); showToast('success', showCc ? 'Captions disabled' : 'Closed Captions enabled'); }}
+                  className={`p-2 rounded-xl border hover:scale-105 active:scale-95 transition cursor-pointer ${
+                    showCc
+                      ? 'bg-teal-500 text-white border-teal-400'
+                      : 'bg-black/45 hover:bg-black/60 text-slate-350 border-white/5'
+                  }`}
+                  title="Closed Captions (CC)"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <rect x="3" y="5" width="18" height="14" rx="2" strokeWidth="2"/>
+                    <path d="M7 9h3v1.5H8.5V11H10v1.5H7V9zm7 0h3v1.5H15.5V11H17v1.5H14V9z"/>
+                  </svg>
+                </button>
+
+                {/* Settings Gear Cog */}
+                <div className="relative">
+                  <button
+                    onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }}
+                    className={`p-2 rounded-xl border hover:scale-105 active:scale-95 transition cursor-pointer ${
+                      showQualityMenu
+                        ? 'bg-primary-600 text-white border-primary-500'
+                        : 'bg-black/45 hover:bg-black/60 text-slate-355 border-white/5'
+                    }`}
+                    title="Player Settings"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3" strokeWidth="2"/>
+                    </svg>
+                  </button>
+
+                  {/* Settings Menu Cards */}
+                  {showQualityMenu && (
+                    <div className="absolute right-0 top-11 bg-slate-950/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl p-2 w-48 z-40 flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-[9px] text-slate-500 uppercase tracking-widest font-black p-2 border-b border-white/5">Video Config</span>
+                      
+                      {/* Playback speed trigger */}
+                      <button
+                        onClick={() => { setShowSpeedMenu(true); setShowQualityMenu(false); }}
+                        className="flex items-center justify-between text-[11px] font-bold p-2 text-left text-slate-200 hover:bg-white/5 rounded-lg transition cursor-pointer"
+                      >
+                        <span>Playback Speed</span>
+                        <span className="text-teal-400">{playbackSpeed}x ➔</span>
+                      </button>
+
+                      {/* Resolution select */}
+                      <button
+                        onClick={() => { setShowQualityMenu(false); setShowSpeedMenu(false); showToast('info', 'Change resolution under Quality selection'); }}
+                        className="flex items-center justify-between text-[11px] font-bold p-2 text-left text-slate-200 hover:bg-white/5 rounded-lg transition cursor-pointer"
+                      >
+                        <span>Quality</span>
+                        <span className="text-teal-400">{quality}</span>
+                      </button>
+
+                      {/* Quick Auto-play toggle */}
+                      <div className="flex items-center justify-between p-2 border-t border-white/5 mt-1">
+                        <span className="text-[10px] font-bold text-slate-400">Autoplay Next</span>
+                        <input
+                          type="checkbox"
+                          checked={autoplay}
+                          onChange={(e) => setAutoplay(e.target.checked)}
+                          className="w-4 h-4 accent-teal-400 rounded cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Playback speed Sub-menu */}
+                  {showSpeedMenu && (
+                    <div className="absolute right-0 top-11 bg-slate-950/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl p-2 w-32 z-40 flex flex-col" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => { setShowSpeedMenu(false); setShowQualityMenu(true); }}
+                        className="text-[9px] text-primary-400 uppercase tracking-widest font-black p-2 border-b border-white/5 hover:text-white transition text-left cursor-pointer"
+                      >
+                        🠔 Back
+                      </button>
+                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map(speed => (
+                        <button
+                          key={speed}
+                          onClick={() => handleSpeedChange(speed)}
+                          className={`text-[11px] font-bold py-1.5 px-3 rounded-lg text-left hover:bg-white/5 text-slate-200 cursor-pointer ${
+                            playbackSpeed === speed ? 'text-teal-400 bg-teal-500/5' : ''
+                          }`}
+                        >
+                          {speed}x {speed === 1 ? '(Normal)' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3 text-xs relative">
-              {/* Playback speed */}
-              <div className="relative">
-                <button
-                  onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }}
-                  className="text-white hover:text-teal-400 font-bold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
-                >
-                  {playbackSpeed}x
-                </button>
-                {showSpeedMenu && (
-                  <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-20 flex flex-col z-20">
-                    {[0.5, 1, 1.25, 1.5, 2].map(speed => (
-                      <button
-                        key={speed}
-                        onClick={() => handleSpeedChange(speed)}
-                        className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${playbackSpeed === speed ? 'text-teal-400' : ''}`}
-                      >
-                        {speed}x
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Quality selector */}
-              <div className="relative">
-                <button
-                  onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }}
-                  className="text-white hover:text-teal-400 font-semibold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
-                >
-                  {quality}
-                </button>
-                {showQualityMenu && (
-                  <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-24 flex flex-col z-20">
-                    {['Auto', '1080p', '720p', '480p'].map(q => (
-                      <button
-                        key={q}
-                        onClick={() => handleQualityChange(q)}
-                        className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${quality === q ? 'text-teal-400' : ''}`}
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Picture in picture */}
-              <button onClick={togglePip} className="text-white hover:text-teal-400 cursor-pointer" title="Picture in Picture">
-                📺
-              </button>
-
-              {/* Theatre Mode */}
+            {/* ════════ CENTER CONTROLS OVERLAY ════════ */}
+            <div className="flex items-center justify-center space-x-6 w-full" onClick={(e) => e.stopPropagation()}>
+              {/* Skip Previous Lesson */}
               <button
-                onClick={() => setIsTheatreMode(!isTheatreMode)}
-                className="hidden lg:block text-white hover:text-teal-400 text-xs cursor-pointer"
-                title={isTheatreMode ? "Exit Theatre Mode" : "Theatre Mode"}
+                onClick={retreatPrevLesson}
+                className="w-11 h-11 rounded-full bg-black/55 hover:bg-black/75 flex items-center justify-center text-white border border-white/5 hover:scale-110 active:scale-95 transition duration-150 cursor-pointer shadow-lg"
+                title="Previous Lecture"
               >
-                {isTheatreMode ? '🗗' : '🗖'}
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                </svg>
               </button>
 
-              {/* Fullscreen */}
-              <button onClick={toggleFullscreen} className="text-white hover:text-teal-400 cursor-pointer" title="Fullscreen">
-                🔲
+              {/* Large Play/Pause Toggle */}
+              <button
+                onClick={togglePlay}
+                className="w-16 h-16 rounded-full bg-teal-500 hover:bg-teal-400 flex items-center justify-center text-white shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer border border-white/10"
+                title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+              >
+                {isPlaying ? (
+                  <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 19h4V5H6zm8-14v14h4V5z"/>
+                  </svg>
+                ) : (
+                  <svg className="w-7 h-7 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                )}
+              </button>
+
+              {/* Skip Next Lesson */}
+              <button
+                onClick={advanceNextLesson}
+                className="w-11 h-11 rounded-full bg-black/55 hover:bg-black/75 flex items-center justify-center text-white border border-white/5 hover:scale-110 active:scale-95 transition duration-150 cursor-pointer shadow-lg"
+                title="Next Lecture"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 6l8.5 6L6 18zm9 0h2v12h-2z"/>
+                </svg>
               </button>
             </div>
+
+            {/* ════════ BOTTOM CONTROLS OVERLAY ════════ */}
+            <div className="flex flex-col gap-2 w-full" onClick={(e) => e.stopPropagation()}>
+              {/* Timeline Scrubber Timeline (Thin expands on hover) */}
+              <div className="flex items-center space-x-3 w-full group/scrub">
+                <span className="text-[10px] text-slate-350 font-semibold font-mono">{formatTime(currentTime)}</span>
+                <div className="flex-grow relative flex items-center">
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration || 100}
+                    value={currentTime}
+                    onChange={handleScrub}
+                    className="w-full h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-red-600 hover:h-1.5 transition-all duration-100"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-350 font-semibold font-mono">{formatTime(duration)}</span>
+              </div>
+
+              {/* Action Buttons Row */}
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center space-x-4">
+                  {/* Tiny Play/Pause */}
+                  <button onClick={togglePlay} className="text-white hover:text-teal-400 transition cursor-pointer">
+                    {isPlaying ? (
+                      <svg className="w-4.5 h-4.5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
+                    ) : (
+                      <svg className="w-4.5 h-4.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    )}
+                  </button>
+
+                  {/* Volume Controller Mute */}
+                  <div className="flex items-center space-x-2 group/vol">
+                    <button onClick={toggleMute} className="text-white hover:text-teal-400 transition cursor-pointer">
+                      {isMuted ? (
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                      ) : (
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                      )}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={isMuted ? 0 : volume}
+                      onChange={handleVolumeChange}
+                      className="w-0 group-hover/vol:w-16 h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400 opacity-0 group-hover/vol:opacity-100 transition-all"
+                    />
+                  </div>
+
+                  {/* "In this video >" Chapters Trigger Chip */}
+                  <button
+                    onClick={() => setShowChaptersPanel(!showChaptersPanel)}
+                    className={`flex items-center space-x-1 px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider transition ${
+                      showChaptersPanel
+                        ? 'bg-teal-500 text-white shadow shadow-teal-500/20'
+                        : 'bg-white/10 hover:bg-white/20 text-slate-200 border border-white/5'
+                    } cursor-pointer`}
+                  >
+                    <span>moment</span>
+                    <span>➔</span>
+                  </button>
+                </div>
+
+                {/* Right side icons */}
+                <div className="flex items-center space-x-3.5">
+                  {/* PiP */}
+                  <button onClick={togglePip} className="text-slate-300 hover:text-teal-400 transition cursor-pointer" title="Floating Picture in Picture">
+                    <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" stroke-width="2"/><rect x="13" y="11" width="6" height="6" rx="1" stroke-width="2" fill="currentColor"/></svg>
+                  </button>
+
+                  {/* Theatre Mode */}
+                  <button
+                    onClick={() => setIsTheatreMode(!isTheatreMode)}
+                    className="hidden lg:block text-slate-300 hover:text-teal-400 transition cursor-pointer"
+                    title={isTheatreMode ? "Exit Theatre Mode" : "Theatre Mode"}
+                  >
+                    <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1.5" stroke-width="2"/><path d="M15 6v12" stroke-width="1.5"/></svg>
+                  </button>
+
+                  {/* Fullscreen */}
+                  <button onClick={toggleFullscreen} className="text-slate-300 hover:text-teal-400 transition cursor-pointer" title="Fullscreen">
+                    <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 8V4h4m12 4V4h-4M4 16v4h4m12-4v4h-4" /></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+      </div>
+    );
+  };
+
+  // Syllabus Playlist outline helper
+  const renderSyllabusPlaylist = () => {
+    return (
+      <div className="space-y-4 p-1">
+        {(sections || []).map((sec, sIdx) => {
+          return (
+            <div key={sec.id} className="space-y-2 border-b border-surface-600/35 pb-4 last:border-0 last:pb-0">
+              <div className="flex items-center justify-between select-none px-1">
+                <span className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider block">
+                  Chapter {sIdx + 1}: {sec.title}
+                </span>
+                <span className="text-[9px] text-slate-500 font-bold">
+                  {(sec.lessons || []).length} lectures
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {(sec.lessons || []).map((les, lIdx) => {
+                  const isActive = activeLesson?.id === les.id;
+                  return (
+                    <div
+                      key={les.id}
+                      onClick={() => {
+                        setActiveLesson(les);
+                        setShowMobileSyllabus(false); // Close mobile sheet on select
+                      }}
+                      className={`group w-full p-2 rounded-2xl text-left flex items-center space-x-3 border transition-all duration-150 cursor-pointer select-none ${
+                        isActive
+                          ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 font-bold shadow'
+                          : 'bg-transparent border-transparent text-slate-400 hover:bg-surface-700/25 hover:text-white'
+                      }`}
+                    >
+                      {/* Lecture Index / Drag handle dots */}
+                      <div className="flex flex-col items-center space-y-0.5 text-slate-600 shrink-0 select-none">
+                        <span className="text-[9px] font-bold font-mono">
+                          {sIdx + 1}.{lIdx + 1}
+                        </span>
+                        <div className="grid grid-cols-2 gap-0.5 opacity-30 group-hover:opacity-60 transition-opacity">
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                        </div>
+                      </div>
+
+                      {/* Video Thumbnail (YouTube Playlist style) */}
+                      <div className="relative w-20 h-11 bg-surface-950 border border-white/5 rounded-lg overflow-hidden shrink-0 flex items-center justify-center text-slate-600 shadow-sm">
+                        {isActive ? (
+                          /* Equalizer pulsing wave */
+                          <div className="flex items-end space-x-0.5 h-3.5 select-none">
+                            <span className="w-0.5 bg-primary-400 animate-pulse h-2"></span>
+                            <span className="w-0.5 bg-primary-400 animate-pulse h-3.5" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-0.5 bg-primary-400 animate-pulse h-2.5" style={{ animationDelay: '300ms' }}></span>
+                          </div>
+                        ) : (
+                          /* Play Icon */
+                          <svg className="w-4 h-4 opacity-30 group-hover:opacity-70 transition-opacity" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        
+                        {/* Duration Badge */}
+                        <span className="absolute bottom-0.5 right-0.5 bg-black/85 px-1 py-0.2 text-[8px] font-bold text-white rounded font-mono">
+                          {les.durationString || '05:44'}
+                        </span>
+                      </div>
+
+                      {/* Details */}
+                      <div className="min-w-0 flex-grow">
+                        <h4 className="text-[11px] font-bold truncate leading-tight group-hover:text-white transition-colors">{les.title}</h4>
+                        <p className="text-[9px] text-slate-500 truncate mt-0.5">{les.description || 'No description available'}</p>
+                      </div>
+
+                      {/* Completed checkmark */}
+                      <div className="shrink-0 select-none">
+                        <div className="w-4.5 h-4.5 rounded-full border border-slate-700/50 flex items-center justify-center text-[9px] font-bold text-teal-400 bg-teal-500/5 border-teal-500/20">
+                          ✓
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -964,53 +1216,18 @@ const CourseLearn = () => {
   const hasVideo = !!activeLesson || (!!course && !!course.introVideoUrl);
 
   return (
-    <div className="min-h-[85vh] bg-surface-900 flex flex-col-reverse lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
+    <div className="min-h-[85vh] bg-surface-900 flex flex-col lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
 
       {/* Toast popup */}
       {toast.show && (
         <Toast type={toast.type} message={toast.message} onClose={() => setToast({ show: false, message: '', type: 'success' })} />
       )}
 
-      {/* ══════════════════ LEFT PANEL: SYLLABUS OUTLINE ══════════════════ */}
-      <div className={`w-full lg:w-80 bg-surface-800/90 border-t lg:border-t-0 lg:border-r border-surface-600 flex flex-col shrink-0 lg:h-full transition-all duration-300 ${isTheatreMode ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden lg:border-0' : ''}`}>
-        <div className="p-5 border-b border-surface-600">
-          <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">Syllabus Outline</span>
-          <h3 className="text-white font-bold text-base mt-1 line-clamp-1">{course?.title}</h3>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 lg:max-h-[75vh]">
-          {(sections || []).map((sec, sIdx) => (
-            <div key={sec.id} className="space-y-1.5">
-              <span className="text-slate-400 font-extrabold text-[11px] uppercase tracking-wider block">
-                Chapter {sIdx + 1}: {sec.title}
-              </span>
-              <div className="space-y-1">
-                {(sec.lessons || []).map((les, lIdx) => (
-                  <button
-                    key={les.id}
-                    onClick={() => setActiveLesson(les)}
-                    className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between border transition ${activeLesson?.id === les.id
-                        ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 font-bold'
-                        : 'bg-transparent border-transparent text-slate-400 hover:bg-surface-700/30'
-                      }`}
-                  >
-                    <span className="line-clamp-1">{sIdx + 1}.{lIdx + 1} {les.title}</span>
-                    <svg className="w-3.5 h-3.5 opacity-60 shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Center Stage ── */}
+      {/* ── CENTER STAGE / LEFT COLUMN (Main player, Details, Tabs) ── */}
       <div className={`flex-grow p-4 md:p-6 space-y-6 mx-auto w-full lg:overflow-y-auto lg:h-full transition-all duration-300 ${isTheatreMode ? 'max-w-none' : 'max-w-5xl'}`}>
         {/* Live session alert banner */}
         {liveClass && (
-          <div className="bg-error/10 border border-error/20 text-error p-4 rounded-2xl flex items-center justify-between animate-pulse">
+          <div className="bg-error/10 border border-error/20 text-error p-4 rounded-2xl flex items-center justify-between animate-pulse select-none">
             <div className="flex items-center space-x-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-error"></span>
               <span className="text-xs font-bold">A live session "{liveClass.title}" is currently active!</span>
@@ -1024,36 +1241,119 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Video Frame */}
+        {/* Video Frame Card */}
         {hasVideo ? (
           <div className="space-y-4">
             <div
-              className="bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl transition-all duration-300 w-full"
+              className={`bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl transition-all duration-300 w-full ${
+                isMiniPlayer ? 'border-dashed border-teal-500/20' : ''
+              }`}
               style={{
                 aspectRatio: videoAspectRatio ? videoAspectRatio : '16/9',
                 maxHeight: isFullscreen ? '100vh' : '70vh'
               }}
             >
-              {renderVideoPlayer(activeLesson ? activeLesson.videoUrl : course?.introVideoUrl, activeLesson ? activeLesson.title : "Course Introduction")}
+              {isMiniPlayer ? (
+                /* Main slot placeholder when mini-player is active */
+                <div className="w-full h-full bg-surface-950 flex flex-col items-center justify-center text-slate-400 p-6 text-center space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-primary-600/10 flex items-center justify-center text-primary-400 text-2xl animate-pulse">
+                    📺
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">Playing in Mini-Player</h4>
+                    <p className="text-[10px] text-slate-500 max-w-xs mt-1 leading-normal">
+                      You can browse course contents while the lecture continues at the bottom corner of your screen.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsMiniPlayer(false)}
+                    className="bg-primary-600 hover:bg-primary-500 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-xl transition cursor-pointer shadow-md shadow-primary-600/10"
+                  >
+                    Restore Player
+                  </button>
+                </div>
+              ) : (
+                renderVideoPlayer(activeLesson ? activeLesson.videoUrl : course?.introVideoUrl, activeLesson ? activeLesson.title : "Course Introduction")
+              )}
             </div>
 
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            {/* Video metadata information & Actions Row */}
+            <div className="flex flex-col gap-3">
               <div>
-                <h2 className="text-xl font-black text-white">
+                <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-wider block">
+                  {activeLesson ? `Lecture Unit` : `Course Preview`}
+                </span>
+                <h2 className="text-xl font-black text-white mt-0.5">
                   {activeLesson ? activeLesson.title : "Course Introduction"}
                 </h2>
-                <p className="text-slate-400 text-xs mt-1 leading-relaxed max-w-2xl">
+                <p className="text-slate-450 text-xs mt-1 leading-relaxed max-w-3xl">
                   {activeLesson ? activeLesson.description : course?.description}
                 </p>
               </div>
-              {activeLesson && (
+
+              {/* YouTube Style Action Buttons row */}
+              <div className="flex flex-wrap items-center gap-2.5 mt-2 border-y border-surface-600/35 py-3 select-none">
+                {activeLesson && (
+                  <button
+                    onClick={handleMarkComplete}
+                    className="bg-teal-500 hover:bg-teal-400 text-white text-xs font-black px-4.5 py-2 rounded-xl transition shadow shadow-teal-500/10 flex items-center space-x-1.5 cursor-pointer transform active:scale-95"
+                  >
+                    <span>✓</span>
+                    <span>Mark Complete & Next</span>
+                  </button>
+                )}
+
+                {/* Ask AI Trigger */}
                 <button
-                  onClick={handleMarkComplete}
-                  className="bg-teal-500 hover:bg-teal-400 text-white text-xs font-black px-5 py-2.5 rounded-xl transition shadow shadow-teal-500/10 shrink-0 cursor-pointer"
+                  onClick={() => setShowAiChat(!showAiChat)}
+                  className="bg-surface-700 hover:bg-surface-650 text-white border border-surface-600 text-xs font-bold px-4 py-2 rounded-xl transition flex items-center space-x-1.5 cursor-pointer transform active:scale-95"
                 >
-                  Mark Complete & Next ✓
+                  <span>🤖</span>
+                  <span>Ask AI doubt</span>
                 </button>
-              )}
+
+                {/* Notes Bookmark trigger */}
+                <button
+                  onClick={() => {
+                    setActiveTab('notes');
+                    document.getElementById('tabs-section')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="bg-surface-700 hover:bg-surface-655 text-white border border-surface-600 text-xs font-bold px-4 py-2 rounded-xl transition flex items-center space-x-1.5 cursor-pointer transform active:scale-95"
+                >
+                  <span>📝</span>
+                  <span>Add Note</span>
+                </button>
+
+                {/* Downloads trigger */}
+                <button
+                  onClick={() => {
+                    setActiveTab('downloads');
+                    document.getElementById('tabs-section')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="bg-surface-700 hover:bg-surface-655 text-white border border-surface-600 text-xs font-bold px-4 py-2 rounded-xl transition flex items-center space-x-1.5 cursor-pointer transform active:scale-95"
+                >
+                  <span>📥</span>
+                  <span>Downloads</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Collapsible Mobile Playlist Bar (YouTube style mix banner) */}
+            <div className="lg:hidden mt-3" onClick={() => setShowMobileSyllabus(true)}>
+              <div className="bg-surface-800 border border-surface-600/80 rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:bg-surface-750 transition shadow-sm">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-primary-600/10 flex items-center justify-center text-primary-400 text-sm">🔁</div>
+                  <div className="min-w-0">
+                    <h4 className="text-[11px] font-extrabold text-white uppercase tracking-wider">Syllabus Playlist Queue</h4>
+                    <p className="text-[10px] text-primary-400 font-bold truncate mt-0.5">
+                      {activeLesson ? activeLesson.title : "Course Introduction"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-slate-400 font-extrabold text-[11px] bg-white/5 px-2.5 py-1 rounded-lg">
+                  {sections.length} Chapters ➔
+                </div>
+              </div>
             </div>
           </div>
         ) : (
@@ -1065,8 +1365,8 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Tabs Bar */}
-        <div className="bg-surface-800/60 border border-surface-600 rounded-2xl overflow-hidden shadow-lg">
+        {/* Tabs Bar Segment */}
+        <div id="tabs-section" className="bg-surface-800/60 border border-surface-600 rounded-2xl overflow-hidden shadow-lg scroll-mt-20">
           <div className="flex border-b border-surface-600 overflow-x-auto scrollbar-none">
             {[
               { id: 'syllabus', label: '📖 Syllabus Info' },
@@ -1098,7 +1398,7 @@ const CourseLearn = () => {
               </div>
             )}
 
-            {/* Tab 2: Timestamped Notes & Bookmarks */}
+            {/* Tab 2: Notes & Bookmarks */}
             {activeTab === 'notes' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-baseline mb-2">
@@ -1294,9 +1594,111 @@ const CourseLearn = () => {
         </div>
       </div>
 
-      {/* Floating AI Doubt Solver Trigger FAB */}
+      {/* ── DESKTOP RIGHT PANEL / SIDEBAR (Syllabus outline playlist) ── */}
+      <div className={`hidden lg:flex lg:flex-col lg:w-80 bg-surface-800/90 border-l border-surface-600 shrink-0 lg:h-full transition-all duration-300 ${
+        isTheatreMode ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden lg:border-0' : ''
+      }`}>
+        <div className="p-5 border-b border-surface-600 flex flex-col">
+          <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">Syllabus Playlist</span>
+          <h3 className="text-white font-bold text-base mt-1 line-clamp-1">{course?.title}</h3>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 lg:max-h-[85vh]">
+          {renderSyllabusPlaylist()}
+        </div>
+      </div>
+
+      {/* ── MOBILE PLAYLIST BOTTOM DRAWER ── */}
+      {showMobileSyllabus && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 lg:hidden flex flex-col justify-end">
+          {/* Backdrop Click Close */}
+          <div className="absolute inset-0" onClick={() => setShowMobileSyllabus(false)}></div>
+
+          {/* Bottom Sheet Box */}
+          <div className="relative w-full h-[75vh] bg-surface-800 border-t border-surface-600 rounded-t-3xl flex flex-col z-50 animate-slide-in p-4 overflow-hidden shadow-2xl">
+            {/* Drag Handle Pill */}
+            <div className="w-12 h-1 bg-surface-600 rounded-full mx-auto mb-4 shrink-0" onClick={() => setShowMobileSyllabus(false)}></div>
+
+            <div className="flex justify-between items-center pb-3 border-b border-surface-600 mb-4 shrink-0">
+              <div>
+                <span className="text-[9px] text-primary-400 font-extrabold uppercase tracking-widest block">Syllabus Queue</span>
+                <h3 className="text-sm font-black text-white leading-tight max-w-[200px] truncate">{course?.title}</h3>
+              </div>
+              <button
+                onClick={() => setShowMobileSyllabus(false)}
+                className="text-slate-400 hover:text-white text-xs font-black bg-surface-700/50 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition active:scale-90"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Scroll list */}
+            <div className="flex-grow overflow-y-auto py-4 space-y-2">
+              {renderSyllabusPlaylist()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TIMESTAMPTED KEY MOMENTS / CHAPTERS SIDE PANEL ── */}
+      {showChaptersPanel && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex flex-col justify-end lg:justify-start lg:absolute lg:inset-y-0 lg:right-0 lg:left-auto lg:w-80 lg:bg-slate-950/95 lg:border-l lg:border-white/10 lg:shadow-2xl animate-slide-in">
+          {/* Backdrop click on mobile */}
+          <div className="absolute inset-0 lg:hidden" onClick={() => setShowChaptersPanel(false)}></div>
+
+          <div className="relative bg-surface-800 lg:bg-transparent border-t lg:border-t-0 border-surface-600 rounded-t-3xl lg:rounded-none p-5 flex flex-col h-[60vh] lg:h-full z-10 overflow-hidden">
+            {/* Mobile drag handle */}
+            <div className="lg:hidden w-12 h-1 bg-surface-600 rounded-full mx-auto mb-3 shrink-0" onClick={() => setShowChaptersPanel(false)}></div>
+
+            <div className="flex justify-between items-center pb-3.5 border-b border-surface-600/40 shrink-0">
+              <div>
+                <span className="text-[9px] text-teal-400 font-extrabold uppercase tracking-widest block">Lecture Chapters</span>
+                <h3 className="text-sm font-black text-white">In this video</h3>
+              </div>
+              <button
+                onClick={() => setShowChaptersPanel(false)}
+                className="text-slate-400 hover:text-white text-xs font-black bg-surface-700/40 lg:bg-white/5 w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition active:scale-90"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Chapters list */}
+            <div className="flex-grow overflow-y-auto py-4 space-y-2.5">
+              {getActiveChapters().map((ch, idx) => {
+                const isActiveChapter = currentTime >= ch.time && (idx === getActiveChapters().length - 1 || currentTime < getActiveChapters()[idx + 1].time);
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      seekToTimestamp(ch.time);
+                      // Close chapters drawer on mobile on select
+                      if (window.innerWidth <= 1024) {
+                        setShowChaptersPanel(false);
+                      }
+                    }}
+                    className={`flex items-start space-x-3 p-3.5 rounded-xl border transition cursor-pointer select-none ${
+                      isActiveChapter
+                        ? 'bg-teal-500/10 border-teal-500/30 text-teal-400 font-bold'
+                        : 'bg-surface-900/40 border-surface-600/20 text-slate-350 hover:bg-surface-700/40'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black font-mono bg-black/45 border border-white/5 px-2 py-0.5 rounded-md text-slate-300">
+                      {formatTime(ch.time)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[11px] block leading-tight">{ch.title}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating AI Doubt Solver Trigger FAB (Sticky right corner) */}
       <div className="fixed bottom-20 lg:bottom-6 right-6 z-40">
-        {/* Pulsing ring animation for premium AI look */}
         <span className="absolute inset-0 rounded-full bg-primary-600/30 animate-ping duration-[2000ms]"></span>
         <button
           onClick={() => setShowAiChat(!showAiChat)}
@@ -1309,11 +1711,14 @@ const CourseLearn = () => {
         </button>
       </div>
 
-      {/* ══════════════════ MOBILE-NATIVE AI DOUBT DRAWER OVERLAY ══════════════════ */}
+      {/* ══════════════════ RESPONSIVE SLIDE AI DOUBT DRAWER ══════════════════ */}
       {showAiChat && (
-        <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[450px] bg-surface-800 border-l border-surface-600 shadow-2xl flex flex-col z-50 animate-slide-in">
+        <div className="fixed bottom-0 left-0 right-0 h-[80vh] md:h-full md:w-[450px] md:right-0 md:left-auto md:top-0 bg-surface-800 border-t md:border-t-0 md:border-l border-surface-600 rounded-t-3xl md:rounded-t-none shadow-2xl flex flex-col z-50 animate-slide-in overflow-hidden">
+          {/* Mobile Swipe pill drag handle */}
+          <div className="md:hidden w-12 h-1 bg-surface-600 rounded-full mx-auto my-2.5 shrink-0" onClick={() => setShowAiChat(false)}></div>
+
           {/* Header */}
-          <div className="p-4 border-b border-surface-600 flex justify-between items-center bg-background/50 select-none">
+          <div className="p-4 border-b border-surface-600 flex justify-between items-center bg-background/50 select-none shrink-0">
             <div className="flex items-center space-x-2.5 min-w-0">
               {/* Toggle Recents Button */}
               <button
@@ -1374,7 +1779,7 @@ const CourseLearn = () => {
                     onClick={() => selectThread(thread.id)}
                     className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer select-none ${activeThreadId === thread.id
                       ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 shadow'
-                      : 'bg-surface-850 border-surface-650 text-slate-350 hover:bg-surface-700/60 hover:text-white'
+                      : 'bg-surface-850 border-surface-650 text-slate-355 hover:bg-surface-700/60 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center space-x-2.5 min-w-0 flex-1">
@@ -1397,10 +1802,10 @@ const CourseLearn = () => {
           ) : (
             <div className="flex-grow overflow-y-auto p-4.5 space-y-4">
               {(chatMessages || []).length === 0 ? (
-                <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2">
+                <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2 border border-dashed border-white/5 rounded-2xl bg-white/2">
                   <span className="text-3xl block">🤖</span>
                   <p className="font-extrabold text-white">Ask me anything!</p>
-                  <p className="leading-relaxed">I can answer code questions, write code templates, or explain syllabus points.</p>
+                  <p className="leading-relaxed text-[10px] text-slate-450">I can answer code questions, write code templates, or explain syllabus points.</p>
                 </div>
               ) : (
                 (chatMessages || []).map((msg, idx) => (
@@ -1425,7 +1830,7 @@ const CourseLearn = () => {
               )}
               {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5">
+                  <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5 animate-pulse">
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
@@ -1465,6 +1870,13 @@ const CourseLearn = () => {
               Ask
             </button>
           </form>
+        </div>
+      )}
+
+      {/* ── FLOATING MINI-PLAYER (Always sits at bottom corner if enabled) ── */}
+      {isMiniPlayer && (
+        <div className="fixed bottom-20 lg:bottom-6 right-6 w-80 md:w-96 aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 z-50 animate-scale-in group/mini">
+          {renderVideoPlayer(activeLesson ? activeLesson.videoUrl : course?.introVideoUrl, activeLesson ? activeLesson.title : "Course Introduction", true)}
         </div>
       )}
 
