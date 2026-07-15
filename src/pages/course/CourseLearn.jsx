@@ -79,6 +79,7 @@ const CourseLearn = () => {
   const lastTapRef = useRef(0);
   const tapTimeoutRef = useRef(null);
   const controlsTimeoutRef = useRef(null);
+  const chatEndRef = useRef(null);
 
   const resetControlsTimer = () => {
     setShowControls(true);
@@ -605,6 +606,13 @@ const CourseLearn = () => {
     }
   }, [isPlaying, showControls, showSettingsMenu, settingsSubMenu, activityTick]);
 
+  // Auto-scroll AI Chat messages pane to the bottom when messages load or change
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, chatLoading]);
+
   // Scrubber hover handler for time tooltip
   const handleScrubHover = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -911,6 +919,7 @@ const CourseLearn = () => {
         onClick={handlePlayerClick}
         onMouseMove={resetControlsTimer}
         onTouchMove={resetControlsTimer}
+        style={{ touchAction: 'manipulation' }}
         className="video-player-container w-full h-full relative group bg-black flex items-center justify-center select-none overflow-hidden cursor-default"
       >
         <video
@@ -921,6 +930,8 @@ const CourseLearn = () => {
           onEnded={handleMarkComplete}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
+          playsInline
+          webkit-playsinline="true"
           className="w-full h-full object-contain bg-black pointer-events-none"
         />
 
@@ -1402,7 +1413,7 @@ const CourseLearn = () => {
   const hasVideo = !!activeLesson || (!!course && !!course.introVideoUrl);
 
   return (
-    <div className="min-h-[85vh] bg-surface-900 flex flex-col lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
+    <div className="min-h-[85vh] bg-surface-900 flex flex-col lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100dvh-64px)] lg:overflow-hidden">
 
       {/* Toast popup */}
       {toast.show && (
@@ -1535,7 +1546,7 @@ const CourseLearn = () => {
                     placeholder={`Type a note at ${formatTime(currentTime)}...`}
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
-                    className="flex-grow bg-surface-900 border border-surface-600 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                    className="flex-grow bg-surface-900 border border-surface-600 rounded-xl px-4 py-2.5 text-[16px] md:text-xs text-white focus:outline-none focus:border-teal-500"
                     required
                   />
                   <button
@@ -1859,6 +1870,7 @@ const CourseLearn = () => {
                   </div>
                 </div>
               )}
+              <div ref={chatEndRef} />
             </div>
           )}
 
@@ -1882,7 +1894,7 @@ const CourseLearn = () => {
               placeholder="Ask a coding question..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              className="flex-grow bg-surface-900 text-white border border-surface-600 rounded-xl px-4 py-3 text-xs focus:outline-none focus:border-teal-500"
+              className="flex-grow bg-surface-900 text-white border border-surface-600 rounded-xl px-4 py-3 text-[16px] md:text-xs focus:outline-none focus:border-teal-500"
               required
             />
             <button
