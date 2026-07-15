@@ -259,7 +259,7 @@ const StudentDashboard = () => {
         {activeTab === 'home' && (
           <>
             {/* Welcome Banner */}
-            <div className="bg-card border border-border rounded-3xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
+            <div className="bg-card -mx-4 md:mx-0 border-y md:border border-border rounded-none md:rounded-3xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/5 rounded-full blur-2xl"></div>
               <div>
                 <span className="text-[10px] text-primary font-extrabold uppercase tracking-wider">Welcome Back</span>
