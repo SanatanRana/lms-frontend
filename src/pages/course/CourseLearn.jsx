@@ -65,8 +65,27 @@ const CourseLearn = () => {
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [buffering, setBuffering] = useState(false);
+  const [skipIndicator, setSkipIndicator] = useState({ show: false, dir: 'fwd' });
+  const [showCc, setShowCc] = useState(false);
+  const [autoplay, setAutoplay] = useState(true);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [settingsSubMenu, setSettingsSubMenu] = useState(null); // 'speed' | 'quality' | null
+  const [upNextCountdown, setUpNextCountdown] = useState(null);
+  const [upNextDismissed, setUpNextDismissed] = useState(false);
+  const [hoverTime, setHoverTime] = useState(null);
+  const [hoverPosition, setHoverPosition] = useState(0);
 
-  // Notes State
+  const [activityTick, setActivityTick] = useState(0);
+  const lastTapRef = useRef(0);
+  const tapTimeoutRef = useRef(null);
+  const controlsTimeoutRef = useRef(null);
+
+  const resetControlsTimer = () => {
+    setShowControls(true);
+    setActivityTick(prev => prev + 1);
+  };
+
+
   const [noteInput, setNoteInput] = useState('');
   const [notes, setNotes] = useState([]);
 
@@ -224,10 +243,12 @@ const CourseLearn = () => {
   }, [activeLesson, user]);
 
   const safeSeek = (time) => {
-    if (videoRef.current && videoRef.current.readyState >= 1) {
-      videoRef.current.currentTime = time;
-    } else {
-      pendingSeekRef.current = time;
+    if (videoRef.current) {
+      try {
+        videoRef.current.currentTime = time;
+      } catch (err) {
+        console.error("Seeking error:", err);
+      }
     }
   };
 
@@ -468,11 +489,64 @@ const CourseLearn = () => {
       if (isPlaying) {
         videoRef.current.pause();
         setIsPlaying(false);
+        setShowControls(true);
       } else {
         videoRef.current.play();
         setIsPlaying(true);
+        // Reset controls timer when starting to play so they auto-hide
+        setActivityTick(prev => prev + 1);
       }
     }
+  };
+
+  const handlePlayerClick = (e) => {
+    // If clicking on interactive controls/menus, let them handle themselves
+    if (
+      e.target.closest('button') ||
+      e.target.closest('input') ||
+      e.target.closest('select') ||
+      e.target.closest('.yt-settings-menu') ||
+      e.target.closest('.yt-upnext-enter')
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isRightHalf = clickX > rect.width / 2;
+
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 280;
+
+    if (now - lastTapRef.current < DOUBLE_TAP_DELAY) {
+      // Double tap -> Seek
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+        tapTimeoutRef.current = null;
+      }
+      handleDoubleSeek(isRightHalf ? 'fwd' : 'back');
+    } else {
+      // Single tap candidate -> Toggle controls visibility
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current);
+      }
+      tapTimeoutRef.current = setTimeout(() => {
+        setShowControls(prev => {
+          const nextVal = !prev;
+          if (nextVal) {
+            setActivityTick(tick => tick + 1);
+          }
+          return nextVal;
+        });
+        setShowSettingsMenu(false);
+        setSettingsSubMenu(null);
+        tapTimeoutRef.current = null;
+      }, DOUBLE_TAP_DELAY);
+    }
+    lastTapRef.current = now;
   };
 
   const handleTimeUpdate = () => {
@@ -490,7 +564,54 @@ const CourseLearn = () => {
           localStorage.setItem(resumeKey, curTime.toString());
         }
       }
+
+      // Up Next auto-advance trigger at 90% completion
+      if (autoplay && duration > 0 && curTime >= duration * 0.9 && !upNextDismissed && upNextCountdown === null) {
+        setUpNextCountdown(5);
+      }
     }
+  };
+
+  // Up Next countdown timer
+  useEffect(() => {
+    if (upNextCountdown === null || upNextCountdown <= 0) return;
+    const timer = setTimeout(() => {
+      if (upNextCountdown === 1) {
+        advanceNextLesson();
+        setUpNextCountdown(null);
+        setUpNextDismissed(false);
+      } else {
+        setUpNextCountdown(prev => prev - 1);
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upNextCountdown]);
+
+  // Reset up-next state when lesson changes
+  useEffect(() => {
+    setUpNextCountdown(null);
+    setUpNextDismissed(false);
+  }, [activeLesson]);
+
+  // Auto-hide controls when playing after 2.5 seconds of no activity
+  useEffect(() => {
+    if (isPlaying && showControls) {
+      if (showSettingsMenu || settingsSubMenu) return;
+      const timer = setTimeout(() => {
+        setShowControls(false);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [isPlaying, showControls, showSettingsMenu, settingsSubMenu, activityTick]);
+
+  // Scrubber hover handler for time tooltip
+  const handleScrubHover = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    const time = pos * (duration || 0);
+    setHoverTime(time);
+    setHoverPosition(Math.max(0, Math.min(100, pos * 100)));
   };
 
   const handleLoadedMetadata = () => {
@@ -714,6 +835,41 @@ const CourseLearn = () => {
     }
   };
 
+  // Mock CC subtitles track mapping
+  const getCaptionText = (time) => {
+    if (time >= 0 && time < 10) return "Welcome to this LMS learning module! Let's get started.";
+    if (time >= 10 && time < 25) return "In this unit, we will cover the core architectures and layout standards.";
+    if (time >= 25 && time < 45) return "Make sure to write down any doubts and ask the AI Doubt Assistant on your right.";
+    if (time >= 45 && time < 65) return "Let's review the custom code blocks and component structures below.";
+    if (time >= 65 && time < 90) return "Feel free to add timestamped bookmarks and notes as we go.";
+    if (time >= 90 && time < 120) return "We will now demonstrate the responsive layouts and study features.";
+    return null;
+  };
+
+  const handleDoubleSeek = (dir) => {
+    if (!videoRef.current) return;
+    const current = videoRef.current.currentTime;
+    const videoDuration = videoRef.current.duration || duration || 0;
+    let target = dir === 'fwd' ? current + 10 : current - 10;
+    target = Math.max(0, videoDuration > 0 ? Math.min(videoDuration, target) : target);
+    safeSeek(target);
+    setCurrentTime(target);
+    setSkipIndicator({ show: true, dir });
+    setTimeout(() => setSkipIndicator({ show: false, dir }), 600);
+  };
+
+  const retreatPrevLesson = () => {
+    let prevLes = null;
+    for (const sec of (sections || [])) {
+      for (const les of (sec.lessons || [])) {
+        if (les.id === activeLesson?.id) {
+          if (prevLes) { setActiveLesson(prevLes); return; }
+        }
+        prevLes = les;
+      }
+    }
+  };
+
   const renderVideoPlayer = (url, title) => {
     if (!url) return null;
 
@@ -734,12 +890,28 @@ const CourseLearn = () => {
       );
     }
 
-    // HTML5 native video player with Custom Overlay UI
+    const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+    // Get next lesson title for Up Next card
+    const getNextLessonTitle = () => {
+      let found = false;
+      for (const sec of (sections || [])) {
+        for (const les of (sec.lessons || [])) {
+          if (found) return les.title;
+          if (les.id === activeLesson?.id) found = true;
+        }
+      }
+      return null;
+    };
+
+    // HTML5 native video player with Premium YouTube-Style Controls
     return (
       <div
         ref={playerContainerRef}
-        onClick={() => setShowControls(prev => !prev)}
-        className="video-player-container w-full h-full relative group bg-black flex items-center justify-center cursor-pointer select-none overflow-hidden"
+        onClick={handlePlayerClick}
+        onMouseMove={resetControlsTimer}
+        onTouchMove={resetControlsTimer}
+        className="video-player-container w-full h-full relative group bg-black flex items-center justify-center select-none overflow-hidden cursor-default"
       >
         <video
           ref={videoRef}
@@ -749,209 +921,475 @@ const CourseLearn = () => {
           onEnded={handleMarkComplete}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
-          className="w-full h-full object-contain bg-black"
+          className="w-full h-full object-contain bg-black pointer-events-none"
         />
 
-        {/* Centered Controls Overlay (Large touch targets for mobile/gesture control) */}
-        <div
-          className={`absolute inset-0 bg-black/45 flex items-center justify-center space-x-6 z-10 transition-opacity duration-300 ${showControls ? 'opacity-100 font-bold' : 'opacity-0 pointer-events-none'
-            }`}
-        >
-          {/* Rewind 10s */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (videoRef.current) {
-                const back = Math.max(0, videoRef.current.currentTime - 10);
-                safeSeek(back);
-                setCurrentTime(back);
-              }
-            }}
-            className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs transition-transform active:scale-95 cursor-pointer shadow-lg border border-white/5"
-            title="Rewind 10s"
-          >
-            ↺ 10s
-          </button>
+        {/* ── SEEK RIPPLE FEEDBACK ── */}
+        {skipIndicator.show && (
+          <div className={`absolute top-1/2 -translate-y-1/2 z-25 pointer-events-none ${
+            skipIndicator.dir === 'back' ? 'left-1/4' : 'right-1/4'
+          }`}>
+            <div className="yt-seek-ripple rounded-full w-20 h-20 bg-white/10 flex flex-col items-center justify-center">
+              <span className="text-white text-base font-bold">{skipIndicator.dir === 'back' ? '◀◀' : '▶▶'}</span>
+              <span className="text-white text-[9px] font-black uppercase mt-0.5">10s</span>
+            </div>
+          </div>
+        )}
 
-          {/* Large Play/Pause */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePlay();
-            }}
-            className="w-16 h-16 rounded-full bg-teal-500 hover:bg-teal-400 flex items-center justify-center text-white text-xl transition-transform active:scale-95 cursor-pointer shadow-2xl border border-white/10"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
-
-          {/* Forward 10s */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (videoRef.current) {
-                const fwd = Math.min(duration, videoRef.current.currentTime + 10);
-                safeSeek(fwd);
-                setCurrentTime(fwd);
-              }
-            }}
-            className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white text-xs transition-transform active:scale-95 cursor-pointer shadow-lg border border-white/5"
-            title="Forward 10s"
-          >
-            10s ↻
-          </button>
-        </div>
-
-        {/* Buffer loading spinner overlay */}
+        {/* ── BUFFER SPINNER ── */}
         {buffering && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-15">
-            <svg className="animate-spin h-10 w-10 text-teal-400" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-30 pointer-events-none">
+            <svg className="animate-spin h-10 w-10 text-white/80" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
           </div>
         )}
 
-        {/* Control Bar Overlay */}
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={`control-bar absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col gap-2.5 transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
-        >
-          {/* Progress timeline scrubber */}
-          <div className="flex items-center space-x-3">
-            <span className="text-[10px] text-slate-300 font-mono">{formatTime(currentTime)}</span>
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              value={currentTime}
-              onChange={handleScrub}
-              className="flex-grow h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400"
-            />
-            <span className="text-[10px] text-slate-300 font-mono">{formatTime(duration)}</span>
+        {/* ── CLOSED CAPTIONS ── */}
+        {showCc && getCaptionText(currentTime) && (
+          <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 bg-black/90 px-5 py-2 rounded-lg text-white text-[11px] md:text-xs font-semibold text-center z-15 select-none pointer-events-none max-w-[85%] leading-relaxed">
+            {getCaptionText(currentTime)}
           </div>
+        )}
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {/* Play Pause */}
-              <button onClick={togglePlay} className="text-white hover:text-teal-400 text-sm transition cursor-pointer">
-                {isPlaying ? '⏸' : '▶'}
-              </button>
+        {/* ── ALWAYS-VISIBLE THIN RED PROGRESS LINE (when controls hidden) ── */}
+        {!showControls && (
+          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10 z-20 pointer-events-none">
+            <div className="h-full bg-red-600 yt-progress-mini" style={{ width: `${progressPercent}%` }} />
+          </div>
+        )}
 
-              {/* Stop Video */}
-              <button
-                onClick={handleStopVideo}
-                className="text-rose-400 hover:text-rose-300 text-[10px] font-bold bg-rose-600/10 hover:bg-rose-600/20 border border-rose-500/20 px-2 py-0.5 rounded-lg transition cursor-pointer"
-                title="Stop Video"
-              >
-                ⏹ Stop
-              </button>
-
-              {/* Back 10s */}
-              <button
-                onClick={() => { if (videoRef.current) { const back = Math.max(0, videoRef.current.currentTime - 10); safeSeek(back); setCurrentTime(back); } }}
-                className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
-                title="Rewind 10s"
-              >
-                ↺ 10s
-              </button>
-
-              {/* Forward 10s */}
-              <button
-                onClick={() => { if (videoRef.current) { const fwd = Math.min(duration, videoRef.current.currentTime + 10); safeSeek(fwd); setCurrentTime(fwd); } }}
-                className="text-slate-300 hover:text-teal-400 text-xs transition cursor-pointer"
-                title="Forward 10s"
-              >
-                10s ↻
-              </button>
-
-              {/* Mute Volume */}
-              <div className="flex items-center space-x-2 group/vol">
-                <button onClick={toggleMute} className="text-white hover:text-teal-400 text-xs cursor-pointer">
-                  {isMuted ? '🔇' : '🔊'}
-                </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={isMuted ? 0 : volume}
-                  onChange={handleVolumeChange}
-                  className="w-16 h-1 bg-slate-700/60 rounded-full appearance-none cursor-pointer accent-teal-400 opacity-0 group-hover/vol:opacity-100 transition-opacity"
-                />
+        {/* ── UP NEXT AUTO-ADVANCE CARD ── */}
+        {upNextCountdown !== null && upNextCountdown > 0 && getNextLessonTitle() && (
+          <div className="absolute bottom-20 right-4 z-35 yt-upnext-enter" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-surface-900/95 backdrop-blur-md border border-white/10 rounded-2xl p-4 w-64 shadow-2xl">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9px] text-slate-500 font-black uppercase tracking-wider">Up Next</span>
+                <button
+                  onClick={() => { setUpNextCountdown(null); setUpNextDismissed(true); }}
+                  className="text-slate-500 hover:text-white text-xs cursor-pointer transition"
+                >✕</button>
+              </div>
+              <h4 className="text-white text-xs font-bold truncate">{getNextLessonTitle()}</h4>
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white text-[11px] font-black">
+                    {upNextCountdown}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-semibold">seconds</span>
+                </div>
+                <button
+                  onClick={() => { advanceNextLesson(); setUpNextCountdown(null); }}
+                  className="bg-white text-black text-[10px] font-black px-3 py-1.5 rounded-lg hover:bg-slate-200 transition cursor-pointer"
+                >Play Now</button>
               </div>
             </div>
+          </div>
+        )}
 
-            <div className="flex items-center space-x-3 text-xs relative">
-              {/* Playback speed */}
-              <div className="relative">
+        {/* ══════════════════════════════════════════════════════════
+            YOUTUBE-STYLE FULL OVERLAY CONTROLS
+            ══════════════════════════════════════════════════════════ */}
+        <div
+          className={`absolute inset-0 z-10 transition-opacity duration-300 ${
+            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+        >
+          {/* ════ TOP BAR (with gradient) ════ */}
+          <div className="yt-top-gradient absolute top-0 left-0 right-0 px-4 pt-3 pb-6 md:pb-8 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between w-full">
+              {/* Left spacer/layout alignment (CC and Settings on the right) */}
+              <div className="w-8 h-8 md:hidden" />
+
+              {/* Video Title (center) */}
+              <h3 className="text-white text-xs font-bold truncate max-w-[50%] mx-3 hidden md:block">{title}</h3>
+
+              {/* Right: CC + Settings */}
+              <div className="flex items-center space-x-1.5 ml-auto">
+                {/* CC Button */}
                 <button
-                  onClick={() => { setShowSpeedMenu(!showSpeedMenu); setShowQualityMenu(false); }}
-                  className="text-white hover:text-teal-400 font-bold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
+                  onClick={() => { setShowCc(!showCc); }}
+                  className={`p-2 rounded-full transition cursor-pointer ${
+                    showCc
+                      ? 'bg-white text-black'
+                      : 'bg-black/40 hover:bg-black/60 text-white'
+                  }`}
+                  title="Closed Captions"
+                  aria-label="Toggle Closed Captions"
                 >
-                  {playbackSpeed}x
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <rect x="2" y="4" width="20" height="16" rx="2" strokeWidth="2"/>
+                    <text x="6" y="15" fill="currentColor" fontSize="8" fontWeight="bold" stroke="none">CC</text>
+                  </svg>
                 </button>
-                {showSpeedMenu && (
-                  <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-20 flex flex-col z-20">
-                    {[0.5, 1, 1.25, 1.5, 2].map(speed => (
+
+                {/* Settings Gear */}
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      setShowSettingsMenu(!showSettingsMenu);
+                      setSettingsSubMenu(null);
+                    }}
+                    className={`p-2 rounded-full transition cursor-pointer ${
+                      showSettingsMenu
+                        ? 'bg-white/20 text-white'
+                        : 'bg-black/40 hover:bg-black/60 text-white'
+                    }`}
+                    title="Settings"
+                    aria-label="Player Settings"
+                  >
+                    <svg className={`w-4 h-4 transition-transform duration-300 ${showSettingsMenu ? 'rotate-45' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                      <circle cx="12" cy="12" r="3" strokeWidth="2"/>
+                    </svg>
+                  </button>
+
+                  {/* ── Settings Dropdown ── */}
+                  {showSettingsMenu && !settingsSubMenu && (
+                    <div className="yt-settings-menu absolute right-0 top-10 md:top-11 bg-neutral-900/95 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl w-44 md:w-52 z-40 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                       <button
-                        key={speed}
-                        onClick={() => handleSpeedChange(speed)}
-                        className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${playbackSpeed === speed ? 'text-teal-400' : ''}`}
+                        onClick={() => setSettingsSubMenu('speed')}
+                        className="w-full flex items-center justify-between px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[12px] text-slate-200 hover:bg-white/5 transition cursor-pointer"
                       >
-                        {speed}x
+                        <div className="flex items-center space-x-2 md:space-x-3">
+                          <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                          <span className="font-semibold">Playback speed</span>
+                        </div>
+                        <span className="text-slate-400 text-[10px] md:text-[11px] font-medium">{playbackSpeed === 1 ? 'Normal' : `${playbackSpeed}x`} ›</span>
                       </button>
-                    ))}
-                  </div>
-                )}
+                      <button
+                        onClick={() => setSettingsSubMenu('quality')}
+                        className="w-full flex items-center justify-between px-3 md:px-4 py-2 md:py-3 text-[11px] md:text-[12px] text-slate-200 hover:bg-white/5 transition cursor-pointer"
+                      >
+                        <div className="flex items-center space-x-2 md:space-x-3">
+                          <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                          <span className="font-semibold">Quality</span>
+                        </div>
+                        <span className="text-slate-400 text-[10px] md:text-[11px] font-medium">{quality} ›</span>
+                      </button>
+                      <div className="border-t border-white/5">
+                        <div className="flex items-center justify-between px-3 md:px-4 py-2 md:py-3">
+                          <div className="flex items-center space-x-2 md:space-x-3">
+                            <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span className="text-[11px] md:text-[12px] text-slate-200 font-semibold">Autoplay</span>
+                          </div>
+                          <button
+                            onClick={() => setAutoplay(!autoplay)}
+                            className={`w-8 h-4.5 md:w-9 md:h-5 rounded-full transition-colors duration-200 cursor-pointer relative ${autoplay ? 'bg-red-600' : 'bg-slate-600'}`}
+                          >
+                            <span className={`absolute top-0.5 w-3.5 h-3.5 md:w-4 md:h-4 rounded-full bg-white shadow transition-transform duration-200 ${autoplay ? 'translate-x-3.5 md:translate-x-4' : 'translate-x-0.5'}`} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Speed Sub-menu ── */}
+                  {showSettingsMenu && settingsSubMenu === 'speed' && (
+                    <div className="yt-settings-menu absolute right-0 top-10 md:top-11 bg-neutral-900/95 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl w-40 md:w-44 z-40 overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setSettingsSubMenu(null)}
+                        className="w-full flex items-center space-x-2 px-3 md:px-4 py-2 md:py-2.5 text-[10px] md:text-[11px] text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer border-b border-white/5 shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"/></svg>
+                        <span className="font-bold uppercase tracking-wider">Speed</span>
+                      </button>
+                      <div className="max-h-[110px] md:max-h-[220px] overflow-y-auto scrollbar-none flex flex-col">
+                        {[0.5, 0.75, 1, 1.25, 1.5, 2].map(speed => (
+                          <button
+                            key={speed}
+                            onClick={() => { handleSpeedChange(speed); setShowSettingsMenu(false); setSettingsSubMenu(null); }}
+                            className={`w-full flex items-center justify-between px-3 md:px-4 py-1.5 md:py-2.5 text-[11px] md:text-[12px] hover:bg-white/5 transition cursor-pointer shrink-0 ${
+                              playbackSpeed === speed ? 'text-white font-bold' : 'text-slate-400'
+                            }`}
+                          >
+                            <span>{speed === 1 ? 'Normal' : `${speed}x`}</span>
+                            {playbackSpeed === speed && (
+                              <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Quality Sub-menu ── */}
+                  {showSettingsMenu && settingsSubMenu === 'quality' && (
+                    <div className="yt-settings-menu absolute right-0 top-10 md:top-11 bg-neutral-900/95 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl w-40 md:w-44 z-40 overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => setSettingsSubMenu(null)}
+                        className="w-full flex items-center space-x-2 px-3 md:px-4 py-2 md:py-2.5 text-[10px] md:text-[11px] text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer border-b border-white/5 shrink-0"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7"/></svg>
+                        <span className="font-bold uppercase tracking-wider">Quality</span>
+                      </button>
+                      <div className="max-h-[110px] md:max-h-[220px] overflow-y-auto scrollbar-none flex flex-col">
+                        {['Auto', '1080p', '720p', '480p', '360p'].map(q => (
+                          <button
+                            key={q}
+                            onClick={() => { handleQualityChange(q); setShowSettingsMenu(false); setSettingsSubMenu(null); }}
+                            className={`w-full flex items-center justify-between px-3 md:px-4 py-1.5 md:py-2.5 text-[11px] md:text-[12px] hover:bg-white/5 transition cursor-pointer shrink-0 ${
+                              quality === q ? 'text-white font-bold' : 'text-slate-400'
+                            }`}
+                          >
+                            <span>{q}</span>
+                            {quality === q && (
+                              <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ════ CENTER CONTROLS ════ */}
+          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center space-x-8 md:space-x-14 z-20 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            {/* Previous Lesson */}
+            <button
+              onClick={retreatPrevLesson}
+              className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition duration-150 cursor-pointer"
+              title="Previous Lecture"
+              aria-label="Previous Lecture"
+            >
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+              </svg>
+            </button>
+
+            {/* Large Play/Pause */}
+            <button
+              onClick={togglePlay}
+              className="w-12 h-12 md:w-[64px] md:h-[64px] rounded-full bg-white/15 backdrop-blur-sm hover:bg-white/25 flex items-center justify-center text-white shadow-2xl hover:scale-105 active:scale-90 transition-all duration-200 cursor-pointer yt-play-glow"
+              title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? (
+                <svg className="w-6 h-6 md:w-8 md:h-8" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 19h4V5H6zm8-14v14h4V5z"/>
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 md:w-8 md:h-8 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              )}
+            </button>
+
+            {/* Next Lesson */}
+            <button
+              onClick={advanceNextLesson}
+              className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-black/40 hover:bg-black/60 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition duration-150 cursor-pointer"
+              title="Next Lecture"
+              aria-label="Next Lecture"
+            >
+              <svg className="w-4 h-4 md:w-5 md:h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 6l8.5 6L6 18zm9 0h2v12h-2z"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* ════ BOTTOM CONTROLS (with gradient) ════ */}
+          <div className="yt-bottom-gradient absolute bottom-0 left-0 right-0 px-3 md:px-4 pb-3 md:pb-3 pt-6 md:pt-10 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+            {/* Timeline Scrubber */}
+            <div
+              className="relative w-full mb-2 group/scrub"
+              onMouseMove={handleScrubHover}
+              onMouseLeave={() => setHoverTime(null)}
+            >
+              {/* Buffered + Played visual track */}
+              <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-[3px] group-hover/scrub:h-[5px] bg-white/15 rounded-full transition-all overflow-hidden pointer-events-none">
+                {/* Buffered bar (simulated at ~70%) */}
+                <div className="absolute inset-y-0 left-0 bg-white/25 rounded-full" style={{ width: `${Math.min(progressPercent + 15, 100)}%` }} />
+                {/* Played bar */}
+                <div className="absolute inset-y-0 left-0 bg-red-600 rounded-full" style={{ width: `${progressPercent}%` }} />
+              </div>
+              {/* Invisible range input */}
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleScrub}
+                className="yt-scrubber"
+              />
+              {/* Hover Time Tooltip */}
+              {hoverTime !== null && (
+                <div
+                  className="absolute -top-8 bg-black/90 text-white text-[10px] font-bold px-2 py-1 rounded pointer-events-none transition-opacity"
+                  style={{ left: `${hoverPosition}%`, transform: 'translateX(-50%)' }}
+                >
+                  {formatTime(hoverTime)}
+                </div>
+              )}
+            </div>
+
+            {/* Controls Row */}
+            <div className="flex items-center justify-between w-full">
+              {/* Left controls */}
+              <div className="flex items-center space-x-3">
+                {/* Small Play/Pause */}
+                <button onClick={togglePlay} className="text-white hover:text-white/80 transition cursor-pointer" aria-label={isPlaying ? 'Pause' : 'Play'}>
+                  {isPlaying ? (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  )}
+                </button>
+
+                {/* Next */}
+                <button onClick={advanceNextLesson} className="text-white hover:text-white/80 transition cursor-pointer" aria-label="Next Lecture">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6l8.5 6L6 18zm9 0h2v12h-2z"/></svg>
+                </button>
+
+                {/* Volume (hidden on mobile) */}
+                <div className="hidden md:flex items-center space-x-1 group/vol">
+                  <button onClick={toggleMute} className="text-white hover:text-white/80 transition cursor-pointer" aria-label={isMuted ? 'Unmute' : 'Mute'}>
+                    {isMuted || volume === 0 ? (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                    ) : volume < 0.5 ? (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/></svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                    )}
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={isMuted ? 0 : volume}
+                    onChange={handleVolumeChange}
+                    className="yt-volume w-0 group-hover/vol:w-16 opacity-0 group-hover/vol:opacity-100 transition-all duration-200"
+                  />
+                </div>
+
+                {/* Timestamp */}
+                <span className="text-white text-[11px] font-medium select-none">
+                  {formatTime(currentTime)} <span className="text-white/50">/</span> {formatTime(duration)}
+                </span>
               </div>
 
-              {/* Quality selector */}
-              <div className="relative">
-                <button
-                  onClick={() => { setShowQualityMenu(!showQualityMenu); setShowSpeedMenu(false); }}
-                  className="text-white hover:text-teal-400 font-semibold px-2 py-0.5 rounded bg-white/10 cursor-pointer"
-                >
-                  {quality}
+              {/* Right controls */}
+              <div className="flex items-center space-x-2.5">
+                {/* PiP */}
+                <button onClick={togglePip} className="text-white hover:text-white/80 transition cursor-pointer" title="Picture in Picture" aria-label="Picture in Picture">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/></svg>
                 </button>
-                {showQualityMenu && (
-                  <div className="absolute bottom-7 right-0 bg-slate-900 border border-slate-800 rounded-lg shadow-xl py-1 w-24 flex flex-col z-20">
-                    {['Auto', '1080p', '720p', '480p'].map(q => (
-                      <button
-                        key={q}
-                        onClick={() => handleQualityChange(q)}
-                        className={`text-[10px] py-1 text-left px-3 hover:bg-slate-800 text-white ${quality === q ? 'text-teal-400' : ''}`}
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* Picture in picture */}
-              <button onClick={togglePip} className="text-white hover:text-teal-400 cursor-pointer" title="Picture in Picture">
-                📺
-              </button>
+                {/* Theatre Mode (Desktop only) */}
+                <button
+                  onClick={() => setIsTheatreMode(!isTheatreMode)}
+                  className="hidden lg:block text-white hover:text-white/80 transition cursor-pointer"
+                  title={isTheatreMode ? 'Default view' : 'Theatre mode'}
+                  aria-label="Theatre mode"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 6H5c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H5V8h14v8z"/></svg>
+                </button>
 
-              {/* Theatre Mode */}
-              <button
-                onClick={() => setIsTheatreMode(!isTheatreMode)}
-                className="hidden lg:block text-white hover:text-teal-400 text-xs cursor-pointer"
-                title={isTheatreMode ? "Exit Theatre Mode" : "Theatre Mode"}
-              >
-                {isTheatreMode ? '🗗' : '🗖'}
-              </button>
-
-              {/* Fullscreen */}
-              <button onClick={toggleFullscreen} className="text-white hover:text-teal-400 cursor-pointer" title="Fullscreen">
-                🔲
-              </button>
+                {/* Fullscreen */}
+                <button onClick={toggleFullscreen} className="text-white hover:text-white/80 transition cursor-pointer" title="Fullscreen" aria-label="Toggle Fullscreen">
+                  {isFullscreen ? (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                  )}
+                </button>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+  // Syllabus Playlist outline helper
+  const renderSyllabusPlaylist = () => {
+    return (
+      <div className="space-y-4 p-1">
+        {(sections || []).map((sec, sIdx) => {
+          return (
+            <div key={sec.id} className="space-y-2 border-b border-surface-600/35 pb-4 last:border-0 last:pb-0">
+              <div className="flex items-center justify-between select-none px-1">
+                <span className="text-slate-400 font-extrabold text-[10px] uppercase tracking-wider block">
+                  Chapter {sIdx + 1}: {sec.title}
+                </span>
+                <span className="text-[9px] text-slate-500 font-bold">
+                  {(sec.lessons || []).length} lectures
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {(sec.lessons || []).map((les, lIdx) => {
+                  const isActive = activeLesson?.id === les.id;
+                  return (
+                    <div
+                      key={les.id}
+                      onClick={() => {
+                        setActiveLesson(les);
+                      }}
+                      className={`group w-full p-2 rounded-2xl text-left flex items-center space-x-3 border transition-all duration-150 cursor-pointer select-none ${
+                        isActive
+                          ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 font-bold shadow'
+                          : 'bg-transparent border-transparent text-slate-400 hover:bg-surface-700/25 hover:text-white'
+                      }`}
+                    >
+                      {/* Lecture Index / Drag handle dots */}
+                      <div className="flex flex-col items-center space-y-0.5 text-slate-600 shrink-0 select-none">
+                        <span className="text-[9px] font-bold font-mono">
+                          {sIdx + 1}.{lIdx + 1}
+                        </span>
+                        <div className="grid grid-cols-2 gap-0.5 opacity-30 group-hover:opacity-60 transition-opacity">
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                          <span className="w-0.5 h-0.5 rounded-full bg-slate-400"></span>
+                        </div>
+                      </div>
+
+                      {/* Video Thumbnail (YouTube Playlist style) */}
+                      <div className="relative w-20 h-11 bg-surface-950 border border-white/5 rounded-lg overflow-hidden shrink-0 flex items-center justify-center text-slate-600 shadow-sm">
+                        {isActive ? (
+                          /* Equalizer pulsing wave */
+                          <div className="flex items-end space-x-0.5 h-3.5 select-none">
+                            <span className="w-0.5 bg-primary-400 animate-pulse h-2"></span>
+                            <span className="w-0.5 bg-primary-400 animate-pulse h-3.5" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-0.5 bg-primary-400 animate-pulse h-2.5" style={{ animationDelay: '300ms' }}></span>
+                          </div>
+                        ) : (
+                          /* Play Icon */
+                          <svg className="w-4 h-4 opacity-30 group-hover:opacity-70 transition-opacity" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        
+                        {/* Duration Badge */}
+                        <span className="absolute bottom-0.5 right-0.5 bg-black/85 px-1 py-0.2 text-[8px] font-bold text-white rounded font-mono">
+                          {les.durationString || '05:44'}
+                        </span>
+                      </div>
+
+                      {/* Details */}
+                      <div className="min-w-0 flex-grow">
+                        <h4 className="text-[11px] font-bold truncate leading-tight group-hover:text-white transition-colors">{les.title}</h4>
+                        <p className="text-[9px] text-slate-500 truncate mt-0.5">{les.description || 'No description available'}</p>
+                      </div>
+
+                      {/* Completed checkmark */}
+                      <div className="shrink-0 select-none">
+                        <div className="w-4.5 h-4.5 rounded-full border border-slate-700/50 flex items-center justify-center text-[9px] font-bold text-teal-400 bg-teal-500/5 border-teal-500/20">
+                          ✓
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -964,53 +1402,32 @@ const CourseLearn = () => {
   const hasVideo = !!activeLesson || (!!course && !!course.introVideoUrl);
 
   return (
-    <div className="min-h-[85vh] bg-surface-900 flex flex-col-reverse lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
+    <div className="min-h-[85vh] bg-surface-900 flex flex-col lg:flex-row relative pb-20 lg:pb-0 lg:h-[calc(100vh-64px)] lg:overflow-hidden">
 
       {/* Toast popup */}
       {toast.show && (
         <Toast type={toast.type} message={toast.message} onClose={() => setToast({ show: false, message: '', type: 'success' })} />
       )}
 
-      {/* ══════════════════ LEFT PANEL: SYLLABUS OUTLINE ══════════════════ */}
-      <div className={`w-full lg:w-80 bg-surface-800/90 border-t lg:border-t-0 lg:border-r border-surface-600 flex flex-col shrink-0 lg:h-full transition-all duration-300 ${isTheatreMode ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden lg:border-0' : ''}`}>
-        <div className="p-5 border-b border-surface-600">
-          <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">Syllabus Outline</span>
+      {/* ── SYLLABUS OUTLINE SIDEBAR / BOTTOM PANEL ── */}
+      <div className={`flex flex-col w-full lg:w-80 bg-surface-800/90 border-t lg:border-t-0 lg:border-r border-surface-600 shrink-0 lg:h-full transition-all duration-300 order-last lg:order-first ${
+        isTheatreMode ? 'lg:w-0 lg:opacity-0 lg:overflow-hidden lg:border-0' : ''
+      }`}>
+        <div className="p-5 border-b border-surface-600 flex flex-col">
+          <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-widest">SYLLABUS OUTLINE</span>
           <h3 className="text-white font-bold text-base mt-1 line-clamp-1">{course?.title}</h3>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 lg:max-h-[75vh]">
-          {(sections || []).map((sec, sIdx) => (
-            <div key={sec.id} className="space-y-1.5">
-              <span className="text-slate-400 font-extrabold text-[11px] uppercase tracking-wider block">
-                Chapter {sIdx + 1}: {sec.title}
-              </span>
-              <div className="space-y-1">
-                {(sec.lessons || []).map((les, lIdx) => (
-                  <button
-                    key={les.id}
-                    onClick={() => setActiveLesson(les)}
-                    className={`w-full text-left p-2.5 rounded-xl text-xs flex items-center justify-between border transition ${activeLesson?.id === les.id
-                        ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 font-bold'
-                        : 'bg-transparent border-transparent text-slate-400 hover:bg-surface-700/30'
-                      }`}
-                  >
-                    <span className="line-clamp-1">{sIdx + 1}.{lIdx + 1} {les.title}</span>
-                    <svg className="w-3.5 h-3.5 opacity-60 shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="flex-1 overflow-y-auto p-4 lg:max-h-[85vh]">
+          {renderSyllabusPlaylist()}
         </div>
       </div>
 
-      {/* ── Center Stage ── */}
+      {/* ── CENTER STAGE / LEFT COLUMN (Main player, Details, Tabs) ── */}
       <div className={`flex-grow p-4 md:p-6 space-y-6 mx-auto w-full lg:overflow-y-auto lg:h-full transition-all duration-300 ${isTheatreMode ? 'max-w-none' : 'max-w-5xl'}`}>
         {/* Live session alert banner */}
         {liveClass && (
-          <div className="bg-error/10 border border-error/20 text-error p-4 rounded-2xl flex items-center justify-between animate-pulse">
+          <div className="bg-error/10 border border-error/20 text-error p-4 rounded-2xl flex items-center justify-between animate-pulse select-none">
             <div className="flex items-center space-x-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-error"></span>
               <span className="text-xs font-bold">A live session "{liveClass.title}" is currently active!</span>
@@ -1024,11 +1441,11 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Video Frame */}
+        {/* Video Frame Card */}
         {hasVideo ? (
           <div className="space-y-4">
             <div
-              className="bg-black rounded-3xl overflow-hidden border border-surface-600 shadow-2xl transition-all duration-300 w-full"
+              className="bg-black -mx-4 md:mx-0 rounded-none md:rounded-2xl overflow-hidden border-x-0 md:border border-surface-600 shadow-2xl transition-all duration-300 w-auto md:w-full"
               style={{
                 aspectRatio: videoAspectRatio ? videoAspectRatio : '16/9',
                 maxHeight: isFullscreen ? '100vh' : '70vh'
@@ -1037,21 +1454,27 @@ const CourseLearn = () => {
               {renderVideoPlayer(activeLesson ? activeLesson.videoUrl : course?.introVideoUrl, activeLesson ? activeLesson.title : "Course Introduction")}
             </div>
 
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            {/* Video metadata information & Actions Row */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mt-2 border-b border-surface-600/35 pb-4">
               <div>
-                <h2 className="text-xl font-black text-white">
+                <span className="text-[10px] text-primary-400 font-extrabold uppercase tracking-wider block">
+                  {activeLesson ? `Lecture Unit` : `Course Preview`}
+                </span>
+                <h2 className="text-xl font-black text-white mt-0.5">
                   {activeLesson ? activeLesson.title : "Course Introduction"}
                 </h2>
-                <p className="text-slate-400 text-xs mt-1 leading-relaxed max-w-2xl">
+                <p className="text-slate-450 text-xs mt-1 leading-relaxed max-w-3xl">
                   {activeLesson ? activeLesson.description : course?.description}
                 </p>
               </div>
+
               {activeLesson && (
                 <button
                   onClick={handleMarkComplete}
-                  className="bg-teal-500 hover:bg-teal-400 text-white text-xs font-black px-5 py-2.5 rounded-xl transition shadow shadow-teal-500/10 shrink-0 cursor-pointer"
+                  className="bg-teal-500 hover:bg-teal-400 text-white text-xs font-black px-4.5 py-2.5 rounded-xl transition shadow shadow-teal-500/10 flex items-center space-x-1.5 cursor-pointer transform active:scale-95 shrink-0 self-start md:self-auto"
                 >
-                  Mark Complete & Next ✓
+                  <span>Mark Complete & Next</span>
+                  <span>✓</span>
                 </button>
               )}
             </div>
@@ -1065,8 +1488,8 @@ const CourseLearn = () => {
           </div>
         )}
 
-        {/* Tabs Bar */}
-        <div className="bg-surface-800/60 border border-surface-600 rounded-2xl overflow-hidden shadow-lg">
+        {/* Tabs Bar Segment */}
+        <div id="tabs-section" className="bg-surface-800/60 -mx-4 md:mx-0 border-y md:border border-surface-600 rounded-none md:rounded-2xl overflow-hidden shadow-lg scroll-mt-20">
           <div className="flex border-b border-surface-600 overflow-x-auto scrollbar-none">
             {[
               { id: 'syllabus', label: '📖 Syllabus Info' },
@@ -1098,7 +1521,7 @@ const CourseLearn = () => {
               </div>
             )}
 
-            {/* Tab 2: Timestamped Notes & Bookmarks */}
+            {/* Tab 2: Notes & Bookmarks */}
             {activeTab === 'notes' && (
               <div className="space-y-6">
                 <div className="flex justify-between items-baseline mb-2">
@@ -1294,9 +1717,10 @@ const CourseLearn = () => {
         </div>
       </div>
 
-      {/* Floating AI Doubt Solver Trigger FAB */}
+
+
+      {/* Floating AI Doubt Solver Trigger FAB (Sticky right corner) */}
       <div className="fixed bottom-20 lg:bottom-6 right-6 z-40">
-        {/* Pulsing ring animation for premium AI look */}
         <span className="absolute inset-0 rounded-full bg-primary-600/30 animate-ping duration-[2000ms]"></span>
         <button
           onClick={() => setShowAiChat(!showAiChat)}
@@ -1309,11 +1733,14 @@ const CourseLearn = () => {
         </button>
       </div>
 
-      {/* ══════════════════ MOBILE-NATIVE AI DOUBT DRAWER OVERLAY ══════════════════ */}
+      {/* ══════════════════ RESPONSIVE SLIDE AI DOUBT DRAWER ══════════════════ */}
       {showAiChat && (
-        <div className="fixed right-0 top-0 bottom-0 w-full sm:w-[450px] bg-surface-800 border-l border-surface-600 shadow-2xl flex flex-col z-50 animate-slide-in">
+        <div className="fixed bottom-0 left-0 right-0 h-[80vh] md:h-full md:w-[450px] md:right-0 md:left-auto md:top-0 bg-surface-800 border-t md:border-t-0 md:border-l border-surface-600 rounded-t-3xl md:rounded-t-none shadow-2xl flex flex-col z-50 animate-slide-in overflow-hidden">
+          {/* Mobile Swipe pill drag handle */}
+          <div className="md:hidden w-12 h-1 bg-surface-600 rounded-full mx-auto my-2.5 shrink-0" onClick={() => setShowAiChat(false)}></div>
+
           {/* Header */}
-          <div className="p-4 border-b border-surface-600 flex justify-between items-center bg-background/50 select-none">
+          <div className="p-4 border-b border-surface-600 flex justify-between items-center bg-background/50 select-none shrink-0">
             <div className="flex items-center space-x-2.5 min-w-0">
               {/* Toggle Recents Button */}
               <button
@@ -1374,7 +1801,7 @@ const CourseLearn = () => {
                     onClick={() => selectThread(thread.id)}
                     className={`flex items-center justify-between p-3 rounded-xl border transition cursor-pointer select-none ${activeThreadId === thread.id
                       ? 'bg-primary-600/10 border-primary-600/30 text-primary-400 shadow'
-                      : 'bg-surface-850 border-surface-650 text-slate-350 hover:bg-surface-700/60 hover:text-white'
+                      : 'bg-surface-850 border-surface-650 text-slate-355 hover:bg-surface-700/60 hover:text-white'
                       }`}
                   >
                     <div className="flex items-center space-x-2.5 min-w-0 flex-1">
@@ -1397,10 +1824,10 @@ const CourseLearn = () => {
           ) : (
             <div className="flex-grow overflow-y-auto p-4.5 space-y-4">
               {(chatMessages || []).length === 0 ? (
-                <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2">
+                <div className="text-center py-16 text-slate-500 text-xs max-w-xs mx-auto space-y-2 border border-dashed border-white/5 rounded-2xl bg-white/2">
                   <span className="text-3xl block">🤖</span>
                   <p className="font-extrabold text-white">Ask me anything!</p>
-                  <p className="leading-relaxed">I can answer code questions, write code templates, or explain syllabus points.</p>
+                  <p className="leading-relaxed text-[10px] text-slate-450">I can answer code questions, write code templates, or explain syllabus points.</p>
                 </div>
               ) : (
                 (chatMessages || []).map((msg, idx) => (
@@ -1425,7 +1852,7 @@ const CourseLearn = () => {
               )}
               {chatLoading && (
                 <div className="flex justify-start">
-                  <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5">
+                  <div className="bg-primary-600/5 text-primary-400 border border-primary-600/10 rounded-2xl rounded-tl-none px-4 py-3 text-xs flex items-center space-x-1.5 animate-pulse">
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
@@ -1467,6 +1894,8 @@ const CourseLearn = () => {
           </form>
         </div>
       )}
+
+
 
       {/* ── Inline Resource Preview Modal ── */}
       {previewUrl && (
