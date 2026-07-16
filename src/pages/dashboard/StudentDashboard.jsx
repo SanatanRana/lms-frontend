@@ -33,11 +33,13 @@ const StudentDashboard = () => {
 
 
 
+  const [allAssignments, setAllAssignments] = useState([]);
+
   // Fetch Dashboard Data
   const fetchDashboardData = async () => {
     try {
       const enrolledResponse = await api.get('/enrollments/my-courses');
-      const enrolledData = enrolledResponse.data.data;
+      const enrolledData = enrolledResponse.data.data || [];
       setEnrollments(enrolledData);
 
       const allResponse = await api.get('/courses/all');
@@ -51,6 +53,25 @@ const StudentDashboard = () => {
       // Fetch live sessions
       const liveResponse = await api.get('/live/enrolled');
       setLiveSessions(liveResponse.data.data || []);
+
+      // Fetch assignments in parallel for all enrolled courses
+      if (enrolledData.length > 0) {
+        const assignmentsPromises = enrolledData.map(async (enroll) => {
+          try {
+            const assignResp = await api.get(`/assignments/course/${enroll.course.id}`);
+            return (assignResp.data?.data || []).map(assign => ({
+              ...assign,
+              courseId: enroll.course.id,
+              courseTitle: enroll.course.title
+            }));
+          } catch (err) {
+            console.error(`Failed to fetch assignments for course ${enroll.course.id}:`, err);
+            return [];
+          }
+        });
+        const assignmentsList = await Promise.all(assignmentsPromises);
+        setAllAssignments(assignmentsList.flat());
+      }
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
     } finally {
@@ -225,6 +246,7 @@ const StudentDashboard = () => {
           { id: 'home', label: '🏠 Home' },
           { id: 'my-courses', label: '📚 My Courses', count: enrollments.length },
           { id: 'live', label: '📹 Live Classes', count: liveSessions.length },
+          { id: 'assignments', label: '📝 Assignments', count: allAssignments.length },
           { id: 'certificates', label: '🎓 Certificates', count: completedCourses.length },
           { id: 'achievements', label: '🏆 Achievements', count: achievements.filter(a => a.unlocked).length }
         ].map(tab => (
@@ -258,27 +280,82 @@ const StudentDashboard = () => {
         {/* ══════════════════ TAB: HOME ══════════════════ */}
         {activeTab === 'home' && (
           <>
-            {/* Welcome Banner */}
-            <div className="bg-card -mx-4 md:mx-0 border-y md:border border-border rounded-none md:rounded-3xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/5 rounded-full blur-2xl"></div>
-              <div>
-                <span className="text-[10px] text-primary font-extrabold uppercase tracking-wider">Welcome Back</span>
-                <h2 className="text-2xl font-black text-white mt-1">Hello, {user?.name || 'Learner'}! 👋</h2>
-                <p className="text-xs text-text-muted mt-1 leading-normal max-w-md">
-                  Let's keep learning today. You have completed {avgProgress}% of your syllabus.
-                </p>
-              </div>
-              <div className="flex items-center space-x-4 bg-background/60 border border-border p-3.5 rounded-2xl w-full lg:w-auto relative shrink-0">
-                <div className="relative flex items-center justify-center w-12 h-12 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                  <span className="text-2xl">🔥</span>
-                  {streakUpdated && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping"></span>
-                  )}
-                </div>
+            {/* Visual HUD Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 -mx-4 md:mx-0">
+              {/* Welcome Banner Card */}
+              <div className="lg:col-span-2 bg-card border-y md:border border-border rounded-none md:rounded-3xl p-6 flex flex-col justify-between relative overflow-hidden min-h-[140px]">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/5 rounded-full blur-2xl"></div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold block">Learning Streak</span>
-                  <span className="text-lg font-black text-white">{streak} Days active</span>
-                  <span className="text-[9px] text-teal-400 block mt-0.5 font-semibold">Keep it up! Log in daily.</span>
+                  <span className="text-[10px] text-primary font-extrabold uppercase tracking-widest">WELCOME BACK</span>
+                  <h2 className="text-2xl font-black text-white mt-1">Hello, {user?.name || 'Learner'}! 👋</h2>
+                  <p className="text-xs text-text-muted mt-2 leading-relaxed max-w-md">
+                    Keep up the great momentum! You've enrolled in <span className="text-white font-bold">{enrollments.length} courses</span> and achieved an average completion rate of <span className="text-white font-bold">{avgProgress}%</span>.
+                  </p>
+                </div>
+                <div className="mt-4 flex items-center space-x-3.5 bg-background/50 border border-border/85 p-3 rounded-2xl w-full sm:w-fit shrink-0">
+                  <div className="relative flex items-center justify-center w-10 h-10 bg-amber-500/10 border border-amber-500/25 rounded-xl">
+                    <span className="text-xl">🔥</span>
+                    {streakUpdated && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-400 font-bold block">CURRENT STREAK</span>
+                    <span className="text-xs font-extrabold text-white">{streak} Days learning</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SVG Radial Progress HUD Card */}
+              <div className="bg-card border-y md:border border-border rounded-none md:rounded-3xl p-5 flex items-center justify-between relative overflow-hidden min-h-[140px]">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-teal-400 font-extrabold uppercase tracking-widest">SYLLABUS PROGRESS</span>
+                  <h4 className="text-white font-black text-base mt-1">Average Progress</h4>
+                  <p className="text-[10px] text-text-muted mt-0.5 leading-tight">
+                    Based on your active course enrollments
+                  </p>
+                  <div className="pt-3 flex space-x-3 text-[10px] font-bold text-slate-400">
+                    <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-teal-500 mr-1.5"></span>{completedCourses.length} Done</span>
+                    <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-primary mr-1.5"></span>{inProgressCourses.length} Learning</span>
+                  </div>
+                </div>
+
+                {/* SVG Progress Ring */}
+                <div className="relative w-24 h-24 shrink-0 flex items-center justify-center select-none">
+                  <svg className="w-full h-full transform -rotate-90">
+                    {/* Background track */}
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r="38"
+                      strokeWidth="8"
+                      stroke="rgba(255,255,255,0.05)"
+                      fill="transparent"
+                    />
+                    {/* Animated progress overlay */}
+                    <circle
+                      cx="48"
+                      cy="48"
+                      r="38"
+                      strokeWidth="8"
+                      stroke="url(#progressGradient)"
+                      strokeDasharray={2 * Math.PI * 38}
+                      strokeDashoffset={2 * Math.PI * 38 * (1 - avgProgress / 100)}
+                      strokeLinecap="round"
+                      fill="transparent"
+                      className="transition-all duration-1000 ease-out"
+                    />
+                    <defs>
+                      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#3b82f6" />
+                        <stop offset="100%" stopColor="#14b8a6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center">
+                    <span className="text-lg font-black text-white">{avgProgress}%</span>
+                    <span className="text-[7px] text-slate-400 font-extrabold uppercase tracking-wide">Avg</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -773,6 +850,54 @@ const StudentDashboard = () => {
           );
         })()}
 
+        {/* ══════════════════ TAB: ASSIGNMENTS ══════════════════ */}
+        {activeTab === 'assignments' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-baseline mb-2">
+              <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
+                <span className="w-1.5 h-4.5 rounded bg-gradient-to-b from-amber-500 to-rose-400"></span>
+                <span>Assignments & Homework Tasks</span>
+              </h3>
+              <span className="text-[10px] text-slate-500 font-semibold">Track your course assignments</span>
+            </div>
+
+            {allAssignments.length === 0 ? (
+              <div className="text-center py-16 bg-card border border-border rounded-2xl">
+                <span className="text-5xl">📝</span>
+                <p className="text-white font-bold mt-4 text-sm">No Pending Assignments</p>
+                <p className="text-xs text-text-muted mt-1">Your enrolled courses do not have scheduled homework currently.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {allAssignments.map(assign => (
+                  <div key={assign.id} className="bg-card border border-border p-5 rounded-2xl flex flex-col justify-between hover:border-slate-700/50 transition duration-300 card-hover">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-[9px] bg-primary-600/10 border border-primary-500/25 text-primary-400 font-extrabold uppercase px-2.5 py-0.5 rounded tracking-wider truncate max-w-[180px]">
+                          {assign.courseTitle}
+                        </span>
+                        <span className="text-[9px] bg-amber-500/10 border border-amber-500/25 text-amber-400 font-extrabold uppercase px-2.5 py-0.5 rounded tracking-wider">
+                          Due: {new Date(assign.dueDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <h4 className="text-white font-black text-sm">{assign.title}</h4>
+                      <p className="text-text-muted text-[11px] leading-relaxed line-clamp-3">
+                        {assign.description || assign.instructions || 'No detailed instructions provided.'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/course/${assign.courseId}/learn?tab=assignments`)}
+                      className="mt-6 w-full text-center bg-primary hover:bg-primary-light text-white py-2.5 rounded-xl text-xs font-bold transition cursor-pointer select-none"
+                    >
+                      Go to Classroom to Submit 🚀
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ══════════════════ TAB: CERTIFICATES ══════════════════ */}
         {activeTab === 'certificates' && (
           <div>
@@ -809,29 +934,208 @@ const StudentDashboard = () => {
                         win.document.write(`
                           <html>
                             <head>
-                              <title>Certificate of Completion</title>
+                              <title>Certificate of Completion - ${enroll.course.title}</title>
                               <style>
-                                body { background: #0c1222; color: #fff; font-family: sans-serif; text-align: center; padding: 50px; }
-                                .cert { border: 15px solid #111827; padding: 50px; background: #111827; max-width: 800px; margin: auto; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-                                h1 { font-size: 40px; color: #3b82f6; margin-bottom: 5px; }
-                                h3 { font-size: 20px; color: #94a3b8; font-weight: normal; margin-top: 0; }
-                                .recipient { font-size: 28px; font-weight: bold; margin: 30px 0; border-bottom: 2px dashed #334155; display: inline-block; padding-bottom: 5px; }
-                                .details { color: #94a3b8; font-size: 14px; margin-top: 40px; }
+                                @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Montserrat:wght@400;600;700&family=Great+Vibes&display=swap');
+                                @page { size: landscape; margin: 0; }
+                                body { 
+                                  background-color: #0c1222; 
+                                  color: #fff; 
+                                  font-family: 'Montserrat', sans-serif; 
+                                  padding: 0; 
+                                  margin: 0; 
+                                  display: flex;
+                                  align-items: center;
+                                  justify-content: center;
+                                  min-height: 100vh;
+                                  box-sizing: border-box;
+                                }
+                                .certificate-container {
+                                  background: radial-gradient(circle, #1a2332 0%, #111827 100%);
+                                  border: 12px double #d97706;
+                                  padding: 40px 60px;
+                                  width: 900px;
+                                  height: 600px;
+                                  border-radius: 12px;
+                                  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
+                                  display: flex;
+                                  flex-direction: column;
+                                  justify-content: space-between;
+                                  align-items: center;
+                                  position: relative;
+                                  box-sizing: border-box;
+                                }
+                                .seal-bg {
+                                  position: absolute;
+                                  font-size: 260px;
+                                  opacity: 0.04;
+                                  top: 50%;
+                                  left: 50%;
+                                  transform: translate(-50%, -50%);
+                                  user-select: none;
+                                  pointer-events: none;
+                                }
+                                .header {
+                                  text-align: center;
+                                  margin-top: 10px;
+                                }
+                                .logo {
+                                  font-family: 'Cinzel', serif;
+                                  font-size: 28px;
+                                  font-weight: 800;
+                                  letter-spacing: 4px;
+                                  color: #fbbf24;
+                                  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+                                }
+                                .subtitle {
+                                  font-size: 9px;
+                                  text-transform: uppercase;
+                                  letter-spacing: 3px;
+                                  color: #94a3b8;
+                                  margin-top: 6px;
+                                }
+                                .title-block {
+                                  text-align: center;
+                                }
+                                h1 {
+                                  font-family: 'Cinzel', serif;
+                                  font-size: 32px;
+                                  color: #fff;
+                                  margin: 15px 0 5px 0;
+                                  font-weight: 700;
+                                  letter-spacing: 2px;
+                                }
+                                .recipient-block {
+                                  text-align: center;
+                                  width: 80%;
+                                }
+                                .presented-to {
+                                  font-size: 11px;
+                                  font-style: italic;
+                                  color: #94a3b8;
+                                }
+                                .recipient-name {
+                                  font-family: 'Great Vibes', cursive;
+                                  font-size: 52px;
+                                  color: #fbbf24;
+                                  border-bottom: 2px solid #334155;
+                                  padding-bottom: 5px;
+                                  margin: 5px 0 15px 0;
+                                }
+                                .course-title {
+                                  font-size: 16px;
+                                  font-weight: 700;
+                                  color: #fff;
+                                }
+                                .description {
+                                  font-size: 11px;
+                                  color: #cbd5e1;
+                                  max-width: 550px;
+                                  margin: 8px auto 0 auto;
+                                  line-height: 1.6;
+                                }
+                                .footer {
+                                  display: flex;
+                                  justify-content: space-between;
+                                  align-items: flex-end;
+                                  width: 100%;
+                                  margin-bottom: 10px;
+                                }
+                                .sign-block {
+                                  text-align: center;
+                                  width: 180px;
+                                }
+                                .signature {
+                                  font-family: 'Great Vibes', cursive;
+                                  font-size: 26px;
+                                  color: #a5b4fc;
+                                  border-bottom: 1px solid #475569;
+                                  padding-bottom: 2px;
+                                  margin-bottom: 4px;
+                                  min-height: 35px;
+                                }
+                                .sign-label {
+                                  font-size: 8px;
+                                  font-weight: 700;
+                                  color: #94a3b8;
+                                  text-transform: uppercase;
+                                  letter-spacing: 1px;
+                                }
+                                .badge-block {
+                                  display: flex;
+                                  flex-direction: column;
+                                  align-items: center;
+                                }
+                                .gold-seal {
+                                  width: 60px;
+                                  height: 60px;
+                                  background: radial-gradient(circle, #fcd34d 0%, #d97706 100%);
+                                  border: 3px double #fff;
+                                  border-radius: 50%;
+                                  box-shadow: 0 0 15px rgba(217,119,6,0.3);
+                                  display: flex;
+                                  align-items: center;
+                                  justify-content: center;
+                                  font-size: 24px;
+                                }
+                                .verification {
+                                  font-size: 8px;
+                                  font-weight: 600;
+                                  color: #64748b;
+                                  text-transform: uppercase;
+                                  letter-spacing: 1.5px;
+                                  margin-top: 15px;
+                                }
+                                @media print {
+                                  body { background: #fff; color: #000; }
+                                  .certificate-container {
+                                    box-shadow: none;
+                                    page-break-inside: avoid;
+                                    width: 100%;
+                                    height: 100vh;
+                                    border-radius: 0;
+                                    border-width: 15px;
+                                  }
+                                }
                               </style>
                             </head>
                             <body>
-                              <div class="cert">
-                                <h1>LearnGen</h1>
-                                <h3>Certificate of Completion</h3>
-                                <p>This is to certify that</p>
-                                <div class="recipient">${user?.name || 'LearnGen Learner'}</div>
-                                <p>has successfully completed the syllabus for course</p>
-                                <h2>${enroll.course.title}</h2>
-                                <p class="details">Date: ${new Date().toLocaleDateString()} | Verification Code: CERT_${enroll.id}</p>
+                              <div class="certificate-container">
+                                <div class="seal-bg">🎓</div>
+                                <div class="header">
+                                  <div class="logo">LEARNGEN</div>
+                                  <div class="subtitle">Platform for Premium Education</div>
+                                </div>
+                                <div class="title-block">
+                                  <h1>CERTIFICATE OF COMPLETION</h1>
+                                  <div class="subtitle">This verifiable credential honors the dedication of</div>
+                                </div>
+                                <div class="recipient-block">
+                                  <div class="recipient-name">${user?.name || 'LearnGen Learner'}</div>
+                                  <p class="presented-to">for successfully mastering the curriculum and completing all requirements for</p>
+                                  <div class="course-title">${enroll.course.title}</div>
+                                  <p class="description">An intensive coursework path encompassing expert lectures, practical coding assessments, and collaborative doubt-resolution metrics.</p>
+                                </div>
+                                <div class="footer">
+                                  <div class="sign-block">
+                                    <div class="signature">L. G. Director</div>
+                                    <div class="sign-label">Director, LearnGen</div>
+                                  </div>
+                                  <div class="badge-block">
+                                    <div class="gold-seal">🏆</div>
+                                    <div class="verification">ID: CERT_${enroll.id} | Date: ${new Date(enroll.enrolledAt).toLocaleDateString()}</div>
+                                  </div>
+                                  <div class="sign-block">
+                                    <div class="signature">${enroll.course.teacherName || 'S. Rana'}</div>
+                                    <div class="sign-label">Lead Instructor</div>
+                                  </div>
+                                </div>
                               </div>
+                              <script>window.print();</script>
                             </body>
                           </html>
                         `);
+                        win.document.close();
                       }}
                       className="mt-6 w-full text-center bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
                     >
