@@ -366,7 +366,7 @@ const DashboardLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background text-text-main flex overflow-hidden">
+    <div className="min-h-[100dvh] bg-background text-text-main flex overflow-hidden">
       
       {/* ═══════════════════ DESKTOP SIDEBAR ═══════════════════ */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-card border-r border-border shrink-0 z-30">
@@ -437,7 +437,7 @@ const DashboardLayout = () => {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto pb-20 lg:pb-0 h-screen"
+        className="flex-1 flex flex-col min-w-0 overflow-x-hidden overflow-y-auto pb-20 lg:pb-0 h-[100dvh]"
       >
         {/* Pull to refresh mobile indicator */}
         {pullDistance > 10 && (
@@ -452,7 +452,7 @@ const DashboardLayout = () => {
         )}
         
         {/* ── Top Navbar (Mobile & Desktop) ── */}
-        <header className="h-16 bg-card/85 backdrop-blur-md border-b border-border flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
+        <header className="h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] bg-card/85 backdrop-blur-md border-b border-border flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
           
           <div className="flex items-center space-x-4">
             {isLearnPage ? (
@@ -678,7 +678,7 @@ const DashboardLayout = () => {
 
       {/* ═══════════════════ MOBILE STICKY BOTTOM NAVIGATION ═══════════════════ */}
       {bottomLinks.length > 0 && (
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-card border-t border-border z-45 flex items-center justify-around px-2 shadow-2xl">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] bg-card border-t border-border z-45 flex items-center justify-around px-2 shadow-2xl">
           {bottomLinks.map((link, idx) => {
             const isActive = (link.path.includes('tab=my-courses') && location.pathname.includes('/learn')) ||
                              (link.path.includes('tab=') 

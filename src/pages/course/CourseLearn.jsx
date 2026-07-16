@@ -86,6 +86,18 @@ const CourseLearn = () => {
     setActivityTick(prev => prev + 1);
   };
 
+  const triggerHaptic = (type = 'light') => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      if (type === 'light') {
+        navigator.vibrate(10);
+      } else if (type === 'medium') {
+        navigator.vibrate(20);
+      } else if (type === 'success') {
+        navigator.vibrate([15, 30, 15]);
+      }
+    }
+  };
+
 
   const [noteInput, setNoteInput] = useState('');
   const [notes, setNotes] = useState([]);
@@ -292,28 +304,33 @@ const CourseLearn = () => {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-
-
-  // Mobile Auto-Landscape Fullscreen
+  // Prevent background scrolling when in fullscreen mode
   useEffect(() => {
-    const lastOrientation = { val: window.innerHeight < window.innerWidth ? 'landscape' : 'portrait' };
-    const handleResize = () => {
-      const currentOrientation = window.innerHeight < window.innerWidth ? 'landscape' : 'portrait';
-      if (currentOrientation !== lastOrientation.val) {
-        lastOrientation.val = currentOrientation;
-        const isMobile = window.innerWidth <= 1024;
-        if (isMobile) {
-          if (currentOrientation === 'landscape' && !document.fullscreenElement) {
-            playerContainerRef.current?.requestFullscreen().catch(e => console.log(e));
-          } else if (currentOrientation === 'portrait' && document.fullscreenElement === playerContainerRef.current) {
-            document.exitFullscreen().catch(e => console.log(e));
-          }
-        }
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isFullscreen]);
+
+  // Sync orientation changes to JavaScript state
+  useEffect(() => {
+    const checkOrientation = () => {
+      const isMobile = window.innerWidth <= 1024;
+      const isLandscape = window.innerWidth > window.innerHeight;
+      if (isMobile && isLandscape) {
+        setIsFullscreen(true);
+      } else if (isMobile && !isLandscape) {
+        setIsFullscreen(false);
       }
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    return () => window.removeEventListener('resize', checkOrientation);
   }, []);
 
   // Mark lesson as complete and update student progress percent
@@ -342,6 +359,7 @@ const CourseLearn = () => {
       const percent = Math.round((lessonIndex / totalLessons) * 100);
       await api.patch(`/enrollments/progress/${id}?percent=${percent}`);
       showToast('success', 'Lesson complete! Saving progress...');
+      triggerHaptic('success');
 
       // Auto advance to next lesson
       advanceNextLesson();
@@ -486,6 +504,7 @@ const CourseLearn = () => {
 
   // Custom Video Player Controls
   const togglePlay = () => {
+    triggerHaptic('light');
     if (videoRef.current) {
       if (isPlaying) {
         videoRef.current.pause();
@@ -709,20 +728,32 @@ const CourseLearn = () => {
     const container = playerContainerRef.current;
     if (!container) return;
 
-    if (!document.fullscreenElement) {
-      container.requestFullscreen().then(() => {
-        setIsFullscreen(true);
-      }).catch(err => {
-        if (videoRef.current && videoRef.current.webkitEnterFullscreen) {
-          videoRef.current.webkitEnterFullscreen();
-        } else {
-          console.error("Fullscreen failed:", err);
-        }
-      });
+    triggerHaptic('light');
+    const isMobile = window.innerWidth <= 1024;
+
+    if (isMobile) {
+      // Toggle CSS fullscreen
+      setIsFullscreen(prev => !prev);
     } else {
-      document.exitFullscreen().then(() => {
-        setIsFullscreen(false);
-      }).catch(err => console.log(err));
+      if (!document.fullscreenElement) {
+        container.requestFullscreen().then(() => {
+          setIsFullscreen(true);
+        }).catch(err => {
+          console.warn("Fullscreen failed, trying webkitEnterFullscreen or falling back to CSS:", err);
+          if (videoRef.current && videoRef.current.webkitEnterFullscreen) {
+            videoRef.current.webkitEnterFullscreen();
+          } else {
+            setIsFullscreen(true);
+          }
+        });
+      } else {
+        document.exitFullscreen().then(() => {
+          setIsFullscreen(false);
+        }).catch(err => {
+          console.error(err);
+          setIsFullscreen(false);
+        });
+      }
     }
   };
 
@@ -920,7 +951,9 @@ const CourseLearn = () => {
         onMouseMove={resetControlsTimer}
         onTouchMove={resetControlsTimer}
         style={{ touchAction: 'manipulation' }}
-        className="video-player-container w-full h-full relative group bg-black flex items-center justify-center select-none overflow-hidden cursor-default"
+        className={`video-player-container w-full h-full relative group bg-black flex items-center justify-center select-none overflow-hidden cursor-default ${
+          isFullscreen ? 'is-fullscreen-mode' : ''
+        }`}
       >
         <video
           ref={videoRef}
@@ -1458,7 +1491,8 @@ const CourseLearn = () => {
             <div
               className="bg-black -mx-4 md:mx-0 rounded-none md:rounded-2xl overflow-hidden border-x-0 md:border border-surface-600 shadow-2xl transition-all duration-300 w-auto md:w-full"
               style={{
-                aspectRatio: videoAspectRatio ? videoAspectRatio : '16/9',
+                aspectRatio: (!videoAspectRatio) ? '16/9' : (videoAspectRatio >= 1 ? videoAspectRatio : undefined),
+                height: (videoAspectRatio && videoAspectRatio < 1) ? '65vh' : undefined,
                 maxHeight: isFullscreen ? '100vh' : '70vh'
               }}
             >

@@ -92,6 +92,88 @@ const TeacherDashboard = () => {
   const [resourceForm, setResourceForm] = useState({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
   const [resources, setResources] = useState([]);
 
+  // Assignments management
+  const [courseAssignments, setCourseAssignments] = useState([]);
+  const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [assignmentForm, setAssignmentForm] = useState({
+    title: '',
+    description: '',
+    dueDate: '',
+    maxScore: 100
+  });
+  const [gradingForm, setGradingForm] = useState({
+    submissionId: '',
+    grade: '',
+    feedback: ''
+  });
+
+  const fetchCourseAssignments = async (courseId) => {
+    try {
+      const response = await api.get(`/assignments/course/${courseId}`);
+      setCourseAssignments(response.data?.data || []);
+    } catch (error) {
+      console.error("Error fetching course assignments:", error);
+      setCourseAssignments([]);
+    }
+  };
+
+  const handleCreateAssignment = async (e) => {
+    e.preventDefault();
+    if (!assignmentForm.title.trim() || !assignmentForm.description.trim() || !assignmentForm.dueDate) return;
+
+    try {
+      const response = await api.post('/assignments/create', {
+        courseId: selectedCourse.id,
+        title: assignmentForm.title,
+        description: assignmentForm.description,
+        dueDate: assignmentForm.dueDate + ":00",
+        maxScore: parseInt(assignmentForm.maxScore || 100)
+      });
+      if (response.data.success) {
+        showNotification('success', 'Assignment scheduled successfully!');
+        fetchCourseAssignments(selectedCourse.id);
+        setAssignmentForm({ title: '', description: '', dueDate: '', maxScore: 100 });
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to schedule assignment.');
+    }
+  };
+
+  const handleFetchSubmissions = async (assignmentId) => {
+    setSelectedAssignmentId(assignmentId);
+    setLoadingSubmissions(true);
+    try {
+      const response = await api.get(`/assignments/${assignmentId}/submissions`);
+      setSubmissions(response.data?.data || []);
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to fetch student submissions.');
+      setSubmissions([]);
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
+  const handleGradeSubmissionSubmit = async (e) => {
+    e.preventDefault();
+    if (!gradingForm.submissionId || gradingForm.grade === '') return;
+
+    try {
+      const response = await api.patch(`/assignments/submissions/${gradingForm.submissionId}/grade?grade=${parseInt(gradingForm.grade)}&feedback=${encodeURIComponent(gradingForm.feedback || '')}`);
+      if (response.data.success) {
+        showNotification('success', 'Graded and feedback submitted successfully!');
+        handleFetchSubmissions(selectedAssignmentId);
+        setGradingForm({ submissionId: '', grade: '', feedback: '' });
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to submit grade.');
+    }
+  };
+
   // Live scheduling state
   const [liveForm, setLiveForm] = useState({
     courseId: '',
@@ -215,13 +297,16 @@ const TeacherDashboard = () => {
     setSelectedCourse(course);
     setSelectedSectionId(null);
     setNewSectionTitle('');
+    setSelectedAssignmentId(null);
+    setSubmissions([]);
     try {
       const response = await api.get(`/courses/${course.id}/sections`);
       setSections(response.data?.data || []);
       const resResponse = await api.get(`/courses/${course.id}/resources`);
       setResources(resResponse.data?.data || []);
+      fetchCourseAssignments(course.id);
     } catch (error) {
-      console.error("Error fetching sections:", error);
+      console.error("Error fetching sections/resources:", error);
       setSections([]);
       setResources([]);
     }
@@ -624,12 +709,12 @@ const TeacherDashboard = () => {
               onClick={() => setSelectedCourse(null)}
               className="text-xs font-bold text-slate-400 hover:text-white transition flex items-center space-x-1.5 cursor-pointer"
             >
-              <span>Close</span>
+              <span>← Back to Workspace</span>
             </button>
           </div>
 
           {/* Add Section/Chapter Form */}
-          <form onSubmit={handleAddSection} className="flex gap-3">
+          <form onSubmit={handleAddSection} className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
               placeholder="New Section Title (e.g. Getting Started)"
@@ -653,26 +738,29 @@ const TeacherDashboard = () => {
               sections.map((sec, sIdx) => (
                 <div key={sec.id} className="bg-background/45 border border-border rounded-2xl p-5 space-y-4">
                   {/* Chapter Header */}
-                  <div className="flex justify-between items-center pb-3 border-b border-border/30">
-                    <div className="flex items-center space-x-3">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center pb-3 border-b border-border/30 gap-2">
+                    <div className="flex flex-wrap items-center gap-2.5">
                       <span className="text-sm font-black text-white">{sIdx + 1}. {sec.title}</span>
-                      <button
-                        onClick={() => handleUpdateSection(sec.id, prompt('Update Chapter Title:', sec.title) || sec.title)}
-                        className="text-[10px] text-slate-500 hover:text-slate-350 font-bold"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSection(sec.id)}
-                        className="text-[10px] text-slate-500 hover:text-error font-bold"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleUpdateSection(sec.id, prompt('Update Chapter Title:', sec.title) || sec.title)}
+                          className="text-[10px] text-slate-500 hover:text-slate-350 font-bold"
+                        >
+                          Edit
+                        </button>
+                        <span className="text-slate-600 text-[9px]">•</span>
+                        <button
+                          onClick={() => handleDeleteSection(sec.id)}
+                          className="text-[10px] text-slate-500 hover:text-error font-bold"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
 
                     <button
                       onClick={() => handleStartAddLesson(sec)}
-                      className="text-xs font-black text-primary-400 hover:text-primary-300 cursor-pointer"
+                      className="text-xs font-black text-primary-400 hover:text-primary-300 cursor-pointer self-start sm:self-auto"
                     >
                       + Add Lesson
                     </button>
@@ -784,6 +872,186 @@ const TeacherDashboard = () => {
                   Add Resource
                 </button>
               </form>
+            </div>
+
+            {/* ══════════════════ ASSIGNMENTS MANAGER SECTION ══════════════════ */}
+            <div className="pt-6 border-t border-border/50 space-y-6">
+              <div>
+                <h4 className="text-white font-extrabold text-xs uppercase tracking-wider mb-2">Scheduled Course Assignments ({courseAssignments.length})</h4>
+                {courseAssignments.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic py-4">No assignments scheduled for this course yet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {courseAssignments.map(ass => (
+                      <div key={ass.id} className="bg-background/45 border border-border p-4 rounded-xl space-y-3">
+                        <div className="flex justify-between items-start min-w-0">
+                          <div>
+                            <span className="text-white font-bold text-xs block">{ass.title}</span>
+                            <span className="text-[9px] text-slate-400 block mt-0.5 font-medium">
+                              Due: {new Date(ass.dueDate).toLocaleDateString()} | Max Score: {ass.maxScore}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleFetchSubmissions(ass.id)}
+                            className="bg-primary/20 hover:bg-primary/35 text-primary-400 border border-primary-500/20 text-[9px] font-black uppercase px-2.5 py-1 rounded transition cursor-pointer select-none"
+                          >
+                            View Submissions
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-405 leading-normal line-clamp-2">{ass.description || ass.instructions}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Submissions Grading Overlay Panel */}
+              {selectedAssignmentId && (
+                <div className="bg-background/30 border border-border p-5 rounded-2xl space-y-4">
+                  <div className="flex justify-between items-baseline border-b border-border/30 pb-2">
+                    <h5 className="text-white font-extrabold text-xs">Student Submissions</h5>
+                    <button
+                      onClick={() => setSelectedAssignmentId(null)}
+                      className="text-[9px] text-slate-400 hover:text-white font-bold"
+                    >
+                      Close Submissions ✕
+                    </button>
+                  </div>
+
+                  {loadingSubmissions ? (
+                    <div className="py-8 text-center text-xs text-slate-500 animate-pulse">Loading submissions...</div>
+                  ) : submissions.length === 0 ? (
+                    <p className="text-xs text-slate-500 italic py-4">No submissions received for this assignment yet.</p>
+                  ) : (
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-none">
+                      {submissions.map(sub => (
+                        <div key={sub.id} className="bg-background/60 border border-border/70 p-4 rounded-xl space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <span className="text-white font-bold text-xs block">{sub.student?.name || 'Student'}</span>
+                              <span className="text-[9px] text-slate-400 block">{sub.student?.email}</span>
+                            </div>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${sub.grade !== null ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                              {sub.grade !== null ? `Graded: ${sub.grade}/${sub.assignment?.maxScore || 100}` : 'Pending Grade'}
+                            </span>
+                          </div>
+
+                          <div className="text-[10px] text-slate-300 space-y-1">
+                            {sub.submissionUrl && (
+                              <p>
+                                <span className="font-semibold text-slate-500">Link: </span>
+                                <a href={sub.submissionUrl} target="_blank" rel="noreferrer" className="text-primary-400 hover:underline font-mono truncate max-w-[250px] inline-block align-bottom">{sub.submissionUrl}</a>
+                              </p>
+                            )}
+                            {sub.answerText && (
+                              <p><span className="font-semibold text-slate-500">Student Note: </span>"{sub.answerText}"</p>
+                            )}
+                            {sub.feedback && (
+                              <p><span className="font-semibold text-teal-400">Teacher Feedback: </span>"{sub.feedback}"</p>
+                            )}
+                          </div>
+
+                          {/* Grade Form */}
+                          <form
+                            onSubmit={handleGradeSubmissionSubmit}
+                            onClick={() => setGradingForm(prev => ({ ...prev, submissionId: sub.id.toString() }))}
+                            className="flex flex-col sm:flex-row gap-2.5 pt-2 border-t border-border/40"
+                          >
+                            <input
+                              type="number"
+                              placeholder="Score"
+                              min="0"
+                              max={sub.assignment?.maxScore || 100}
+                              value={gradingForm.submissionId === sub.id.toString() ? gradingForm.grade : ''}
+                              onChange={(e) => setGradingForm({ ...gradingForm, submissionId: sub.id.toString(), grade: e.target.value })}
+                              className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-[10px] text-white focus:outline-none w-full sm:w-20"
+                              required
+                            />
+                            <input
+                              type="text"
+                              placeholder="Feedback remarks..."
+                              value={gradingForm.submissionId === sub.id.toString() ? gradingForm.feedback : ''}
+                              onChange={(e) => setGradingForm({ ...gradingForm, submissionId: sub.id.toString(), feedback: e.target.value })}
+                              className="bg-background border border-border rounded-lg px-2.5 py-1.5 text-[10px] text-white focus:outline-none flex-1"
+                            />
+                            <button
+                              type="submit"
+                              className="bg-primary hover:bg-primary-light text-white text-[9px] font-extrabold px-4 py-1.5 rounded-lg transition cursor-pointer select-none whitespace-nowrap"
+                            >
+                              Submit Grade
+                            </button>
+                          </form>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Schedule/Create Assignment Form */}
+              <div className="bg-background/45 border border-border p-5 rounded-2xl space-y-4">
+                <h4 className="text-white font-bold text-xs">Schedule New Assignment / Homework</h4>
+                <form onSubmit={handleCreateAssignment} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Assignment Title</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Midterm Coding Assessment"
+                        value={assignmentForm.title}
+                        onChange={(e) => setAssignmentForm({ ...assignmentForm, title: e.target.value })}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Max Score</label>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="100"
+                        value={assignmentForm.maxScore}
+                        onChange={(e) => setAssignmentForm({ ...assignmentForm, maxScore: parseInt(e.target.value) })}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Instructions & Description</label>
+                    <textarea
+                      placeholder="Detail the steps students must take and submission guidelines..."
+                      rows="3"
+                      value={assignmentForm.description}
+                      onChange={(e) => setAssignmentForm({ ...assignmentForm, description: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500"
+                      required
+                    ></textarea>
+                  </div>
+
+                  <div className="flex flex-col md:flex-row gap-4 items-end">
+                    <div className="flex-1 w-full space-y-1">
+                      <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Due Date & Time</label>
+                      <input
+                        type="datetime-local"
+                        value={assignmentForm.dueDate}
+                        min={getMinDateTime()}
+                        onChange={(e) => setAssignmentForm({ ...assignmentForm, dueDate: e.target.value })}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-teal-500 font-semibold"
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full md:w-auto bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-2.5 rounded-xl transition cursor-pointer select-none"
+                    >
+                      Schedule Assignment
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         </div>
