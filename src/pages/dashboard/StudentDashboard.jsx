@@ -1,4 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
@@ -34,6 +35,7 @@ const StudentDashboard = () => {
 
 
   const [allAssignments, setAllAssignments] = useState([]);
+  const [activeCertificate, setActiveCertificate] = useState(null);
 
   // Fetch Dashboard Data
   const fetchDashboardData = async () => {
@@ -929,214 +931,7 @@ const StudentDashboard = () => {
                       </p>
                     </div>
                     <button
-                      onClick={() => {
-                        const win = window.open("", "_blank");
-                        win.document.write(`
-                          <html>
-                            <head>
-                              <title>Certificate of Completion - ${enroll.course.title}</title>
-                              <style>
-                                @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Montserrat:wght@400;600;700&family=Great+Vibes&display=swap');
-                                @page { size: landscape; margin: 0; }
-                                body { 
-                                  background-color: #0c1222; 
-                                  color: #fff; 
-                                  font-family: 'Montserrat', sans-serif; 
-                                  padding: 0; 
-                                  margin: 0; 
-                                  display: flex;
-                                  align-items: center;
-                                  justify-content: center;
-                                  min-height: 100vh;
-                                  box-sizing: border-box;
-                                }
-                                .certificate-container {
-                                  background: radial-gradient(circle, #1a2332 0%, #111827 100%);
-                                  border: 12px double #d97706;
-                                  padding: 40px 60px;
-                                  width: 900px;
-                                  height: 600px;
-                                  border-radius: 12px;
-                                  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
-                                  display: flex;
-                                  flex-direction: column;
-                                  justify-content: space-between;
-                                  align-items: center;
-                                  position: relative;
-                                  box-sizing: border-box;
-                                }
-                                .seal-bg {
-                                  position: absolute;
-                                  font-size: 260px;
-                                  opacity: 0.04;
-                                  top: 50%;
-                                  left: 50%;
-                                  transform: translate(-50%, -50%);
-                                  user-select: none;
-                                  pointer-events: none;
-                                }
-                                .header {
-                                  text-align: center;
-                                  margin-top: 10px;
-                                }
-                                .logo {
-                                  font-family: 'Cinzel', serif;
-                                  font-size: 28px;
-                                  font-weight: 800;
-                                  letter-spacing: 4px;
-                                  color: #fbbf24;
-                                  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-                                }
-                                .subtitle {
-                                  font-size: 9px;
-                                  text-transform: uppercase;
-                                  letter-spacing: 3px;
-                                  color: #94a3b8;
-                                  margin-top: 6px;
-                                }
-                                .title-block {
-                                  text-align: center;
-                                }
-                                h1 {
-                                  font-family: 'Cinzel', serif;
-                                  font-size: 32px;
-                                  color: #fff;
-                                  margin: 15px 0 5px 0;
-                                  font-weight: 700;
-                                  letter-spacing: 2px;
-                                }
-                                .recipient-block {
-                                  text-align: center;
-                                  width: 80%;
-                                }
-                                .presented-to {
-                                  font-size: 11px;
-                                  font-style: italic;
-                                  color: #94a3b8;
-                                }
-                                .recipient-name {
-                                  font-family: 'Great Vibes', cursive;
-                                  font-size: 52px;
-                                  color: #fbbf24;
-                                  border-bottom: 2px solid #334155;
-                                  padding-bottom: 5px;
-                                  margin: 5px 0 15px 0;
-                                }
-                                .course-title {
-                                  font-size: 16px;
-                                  font-weight: 700;
-                                  color: #fff;
-                                }
-                                .description {
-                                  font-size: 11px;
-                                  color: #cbd5e1;
-                                  max-width: 550px;
-                                  margin: 8px auto 0 auto;
-                                  line-height: 1.6;
-                                }
-                                .footer {
-                                  display: flex;
-                                  justify-content: space-between;
-                                  align-items: flex-end;
-                                  width: 100%;
-                                  margin-bottom: 10px;
-                                }
-                                .sign-block {
-                                  text-align: center;
-                                  width: 180px;
-                                }
-                                .signature {
-                                  font-family: 'Great Vibes', cursive;
-                                  font-size: 26px;
-                                  color: #a5b4fc;
-                                  border-bottom: 1px solid #475569;
-                                  padding-bottom: 2px;
-                                  margin-bottom: 4px;
-                                  min-height: 35px;
-                                }
-                                .sign-label {
-                                  font-size: 8px;
-                                  font-weight: 700;
-                                  color: #94a3b8;
-                                  text-transform: uppercase;
-                                  letter-spacing: 1px;
-                                }
-                                .badge-block {
-                                  display: flex;
-                                  flex-direction: column;
-                                  align-items: center;
-                                }
-                                .gold-seal {
-                                  width: 60px;
-                                  height: 60px;
-                                  background: radial-gradient(circle, #fcd34d 0%, #d97706 100%);
-                                  border: 3px double #fff;
-                                  border-radius: 50%;
-                                  box-shadow: 0 0 15px rgba(217,119,6,0.3);
-                                  display: flex;
-                                  align-items: center;
-                                  justify-content: center;
-                                  font-size: 24px;
-                                }
-                                .verification {
-                                  font-size: 8px;
-                                  font-weight: 600;
-                                  color: #64748b;
-                                  text-transform: uppercase;
-                                  letter-spacing: 1.5px;
-                                  margin-top: 15px;
-                                }
-                                @media print {
-                                  body { background: #fff; color: #000; }
-                                  .certificate-container {
-                                    box-shadow: none;
-                                    page-break-inside: avoid;
-                                    width: 100%;
-                                    height: 100vh;
-                                    border-radius: 0;
-                                    border-width: 15px;
-                                  }
-                                }
-                              </style>
-                            </head>
-                            <body>
-                              <div class="certificate-container">
-                                <div class="seal-bg">🎓</div>
-                                <div class="header">
-                                  <div class="logo">LEARNGEN</div>
-                                  <div class="subtitle">Platform for Premium Education</div>
-                                </div>
-                                <div class="title-block">
-                                  <h1>CERTIFICATE OF COMPLETION</h1>
-                                  <div class="subtitle">This verifiable credential honors the dedication of</div>
-                                </div>
-                                <div class="recipient-block">
-                                  <div class="recipient-name">${user?.name || 'LearnGen Learner'}</div>
-                                  <p class="presented-to">for successfully mastering the curriculum and completing all requirements for</p>
-                                  <div class="course-title">${enroll.course.title}</div>
-                                  <p class="description">An intensive coursework path encompassing expert lectures, practical coding assessments, and collaborative doubt-resolution metrics.</p>
-                                </div>
-                                <div class="footer">
-                                  <div class="sign-block">
-                                    <div class="signature">L. G. Director</div>
-                                    <div class="sign-label">Director, LearnGen</div>
-                                  </div>
-                                  <div class="badge-block">
-                                    <div class="gold-seal">🏆</div>
-                                    <div class="verification">ID: CERT_${enroll.id} | Date: ${new Date(enroll.enrolledAt).toLocaleDateString()}</div>
-                                  </div>
-                                  <div class="sign-block">
-                                    <div class="signature">${enroll.course.teacherName || 'S. Rana'}</div>
-                                    <div class="sign-label">Lead Instructor</div>
-                                  </div>
-                                </div>
-                              </div>
-                              <script>window.print();</script>
-                            </body>
-                          </html>
-                        `);
-                        win.document.close();
-                      }}
+                      onClick={() => setActiveCertificate(enroll)}
                       className="mt-6 w-full text-center bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
                     >
                       Download Certificate PDF 📥
@@ -1180,6 +975,334 @@ const StudentDashboard = () => {
         <p>© {new Date().getFullYear()} LearnGen Student Environment. Designed for high fidelity and one-handed layouts.</p>
         <p className="font-semibold text-primary-400">Streak Active • Live classrooms Connected • Doubt Solver Online</p>
       </footer>
+
+      {activeCertificate && createPortal(
+        <div className="certificate-portal-overlay">
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Montserrat:wght@400;600;700&family=Great+Vibes&display=swap');
+            
+            .certificate-portal-overlay {
+              position: fixed;
+              inset: 0;
+              z-index: 99999;
+              background-color: rgba(2, 6, 23, 0.95);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              padding: 1rem;
+              overflow-y: auto;
+            }
+            
+            .certificate-preview-header {
+              background-color: #0f172a;
+              border: 1px solid #1e293b;
+              border-top-left-radius: 1rem;
+              border-top-right-radius: 1rem;
+              padding: 1rem;
+              width: 100%;
+              max-width: 900px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+            }
+            
+            .certificate-preview-body {
+              background-color: #0f172a;
+              border-left: 1px solid #1e293b;
+              border-right: 1px solid #1e293b;
+              border-bottom: 1px solid #1e293b;
+              border-bottom-left-radius: 1rem;
+              border-bottom-right-radius: 1rem;
+              padding: 2rem;
+              width: 100%;
+              max-width: 900px;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              overflow-x: auto;
+              box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+            }
+            
+            .certificate-scale-wrapper {
+              transform: scale(0.35);
+              transform-origin: center;
+            }
+            @media (min-width: 480px) {
+              .certificate-scale-wrapper {
+                transform: scale(0.48);
+              }
+            }
+            @media (min-width: 640px) {
+              .certificate-scale-wrapper {
+                transform: scale(0.65);
+              }
+            }
+            @media (min-width: 768px) {
+              .certificate-scale-wrapper {
+                transform: scale(0.8);
+              }
+            }
+            @media (min-width: 940px) {
+              .certificate-scale-wrapper {
+                transform: scale(1);
+              }
+            }
+            
+            .certificate-container {
+              background: radial-gradient(circle, #1a2332 0%, #111827 100%);
+              border: 12px double #d97706;
+              padding: 40px 60px;
+              width: 900px;
+              height: 600px;
+              border-radius: 12px;
+              box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8);
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              align-items: center;
+              position: relative;
+              box-sizing: border-box;
+            }
+            .seal-bg {
+              position: absolute;
+              font-size: 260px;
+              opacity: 0.04;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%);
+              user-select: none;
+              pointer-events: none;
+            }
+            .header {
+              text-align: center;
+              margin-top: 10px;
+            }
+            .logo {
+              font-family: 'Cinzel', serif;
+              font-size: 28px;
+              font-weight: 800;
+              letter-spacing: 4px;
+              color: #fbbf24;
+              text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            }
+            .subtitle {
+              font-size: 9px;
+              text-transform: uppercase;
+              letter-spacing: 3px;
+              color: #94a3b8;
+              margin-top: 6px;
+            }
+            .title-block {
+              text-align: center;
+            }
+            h1.cert-title {
+              font-family: 'Cinzel', serif;
+              font-size: 32px;
+              color: #fff;
+              margin: 15px 0 5px 0;
+              font-weight: 700;
+              letter-spacing: 2px;
+            }
+            .recipient-block {
+              text-align: center;
+              width: 80%;
+            }
+            .presented-to {
+              font-size: 11px;
+              font-style: italic;
+              color: #94a3b8;
+            }
+            .recipient-name {
+              font-family: 'Great Vibes', cursive;
+              font-size: 52px;
+              color: #fbbf24;
+              border-bottom: 2px solid #334155;
+              padding-bottom: 5px;
+              margin: 5px 0 15px 0;
+            }
+            .course-title {
+              font-size: 16px;
+              font-weight: 700;
+              color: #fff;
+            }
+            .description {
+              font-size: 11px;
+              color: #cbd5e1;
+              max-width: 550px;
+              margin: 8px auto 0 auto;
+              line-height: 1.6;
+            }
+            .footer {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+              width: 100%;
+              margin-bottom: 10px;
+            }
+            .sign-block {
+              text-align: center;
+              width: 180px;
+            }
+            .signature {
+              font-family: 'Great Vibes', cursive;
+              font-size: 26px;
+              color: #a5b4fc;
+              border-bottom: 1px solid #475569;
+              padding-bottom: 2px;
+              margin-bottom: 4px;
+              min-height: 35px;
+            }
+            .sign-label {
+              font-size: 8px;
+              font-weight: 700;
+              color: #94a3b8;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .badge-block {
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+            }
+            .gold-seal {
+              width: 60px;
+              height: 60px;
+              background: radial-gradient(circle, #fcd34d 0%, #d97706 100%);
+              border: 3px double #fff;
+              border-radius: 50%;
+              box-shadow: 0 0 15px rgba(217,119,6,0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 24px;
+            }
+            .verification {
+              font-size: 8px;
+              font-weight: 600;
+              color: #64748b;
+              text-transform: uppercase;
+              letter-spacing: 1.5px;
+              margin-top: 15px;
+            }
+            
+            @media print {
+              @page { size: landscape; margin: 0; }
+              #root {
+                display: none !important;
+              }
+              body > *:not(.certificate-portal-overlay) {
+                display: none !important;
+              }
+              body {
+                background-color: #0c1222 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                margin: 0;
+                padding: 0;
+              }
+              .certificate-portal-overlay {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: #0c1222 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                overflow: hidden;
+                display: flex !important;
+                justify-content: center;
+                align-items: center;
+                z-index: 9999999 !important;
+              }
+              .certificate-preview-header {
+                display: none !important;
+              }
+              .certificate-preview-body {
+                border: none !important;
+                padding: 0 !important;
+                background-color: transparent !important;
+                box-shadow: none !important;
+                width: 100vw;
+                height: 100vh;
+                display: flex !important;
+                justify-content: center;
+                align-items: center;
+              }
+              .certificate-scale-wrapper {
+                transform: scale(1) !important;
+                width: 900px !important;
+                height: 600px !important;
+              }
+              .certificate-container {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                width: 900px !important;
+                height: 600px !important;
+              }
+            }
+          `}</style>
+          
+          <div className="certificate-preview-header print:hidden">
+            <h3 className="text-white font-extrabold text-sm flex items-center gap-2">
+              <span>🏆</span> Certificate Preview
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-[10px] font-black px-3.5 py-2 rounded-xl transition cursor-pointer"
+              >
+                Print / Save PDF 🖨️
+              </button>
+              <button
+                onClick={() => setActiveCertificate(null)}
+                className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-extrabold px-3.5 py-2 rounded-xl transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          
+          <div className="certificate-preview-body">
+            <div className="certificate-scale-wrapper">
+              <div className="certificate-container">
+                <div className="seal-bg">🎓</div>
+                <div className="header">
+                  <div className="logo">LEARNGEN</div>
+                  <div className="subtitle">Platform for Premium Education</div>
+                </div>
+                <div className="title-block">
+                  <h1 className="cert-title">CERTIFICATE OF COMPLETION</h1>
+                  <div className="subtitle">This verifiable credential honors the dedication of</div>
+                </div>
+                <div className="recipient-block">
+                  <div className="recipient-name">{user?.name || 'LearnGen Learner'}</div>
+                  <p className="presented-to">for successfully mastering the curriculum and completing all requirements for</p>
+                  <div className="course-title">{activeCertificate.course.title}</div>
+                  <p className="description">An intensive coursework path encompassing expert lectures, practical coding assessments, and collaborative doubt-resolution metrics.</p>
+                </div>
+                <div className="footer">
+                  <div className="sign-block">
+                    <div className="signature">L. G. Director</div>
+                    <div className="sign-label">Director, LearnGen</div>
+                  </div>
+                  <div className="badge-block">
+                    <div className="gold-seal">🏆</div>
+                    <div className="verification">ID: CERT_{activeCertificate.id} | Date: {new Date(activeCertificate.enrolledAt).toLocaleDateString()}</div>
+                  </div>
+                  <div className="sign-block">
+                    <div className="signature">{activeCertificate.course.teacherName || 'S. Rana'}</div>
+                    <div className="sign-label">Lead Instructor</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );

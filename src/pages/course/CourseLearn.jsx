@@ -729,33 +729,85 @@ const CourseLearn = () => {
     if (!container) return;
 
     triggerHaptic('light');
-    const isMobile = window.innerWidth <= 1024;
 
-    if (isMobile) {
-      // Toggle CSS fullscreen
-      setIsFullscreen(prev => !prev);
+    const lockLandscape = () => {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(err => {
+          console.warn("Orientation lock failed:", err);
+        });
+      }
+    };
+
+    const unlockOrientation = () => {
+      if (screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock().catch(() => {});
+      }
+    };
+
+    if (document.fullscreenElement || isFullscreen) {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().then(() => {
+          setIsFullscreen(false);
+          unlockOrientation();
+        }).catch(err => {
+          console.error("Exit fullscreen failed:", err);
+          setIsFullscreen(false);
+          unlockOrientation();
+        });
+      } else {
+        // Fallback to CSS fullscreen
+        setIsFullscreen(false);
+        unlockOrientation();
+      }
     } else {
-      if (!document.fullscreenElement) {
+      // Enter fullscreen
+      if (container.requestFullscreen) {
         container.requestFullscreen().then(() => {
           setIsFullscreen(true);
+          lockLandscape();
         }).catch(err => {
-          console.warn("Fullscreen failed, trying webkitEnterFullscreen or falling back to CSS:", err);
+          console.warn("Native fullscreen failed, trying Safari fallback or CSS fallback:", err);
           if (videoRef.current && videoRef.current.webkitEnterFullscreen) {
             videoRef.current.webkitEnterFullscreen();
           } else {
             setIsFullscreen(true);
+            showToast('info', 'Rotate your phone sideways for the best view! 📱');
           }
         });
+      } else if (videoRef.current && videoRef.current.webkitEnterFullscreen) {
+        // iOS Safari element-level fullscreen fallback
+        try {
+          videoRef.current.webkitEnterFullscreen();
+        } catch (err) {
+          console.warn("webkitEnterFullscreen failed:", err);
+          setIsFullscreen(true);
+          showToast('info', 'Rotate your phone sideways for the best view! 📱');
+        }
       } else {
-        document.exitFullscreen().then(() => {
-          setIsFullscreen(false);
-        }).catch(err => {
-          console.error(err);
-          setIsFullscreen(false);
-        });
+        // CSS fallback
+        setIsFullscreen(true);
+        showToast('info', 'Rotate your phone sideways for the best view! 📱');
       }
     }
   };
+
+  // Sync state with native fullscreen changes (e.g. Escape key, back button, swipe-out)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNativeFull = !!document.fullscreenElement;
+      setIsFullscreen(isNativeFull);
+      if (!isNativeFull && screen.orientation && screen.orientation.unlock) {
+        screen.orientation.unlock().catch(() => {});
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Keyboard Shortcuts Handler
   useEffect(() => {
