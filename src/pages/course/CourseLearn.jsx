@@ -42,6 +42,8 @@ const CourseLearn = () => {
   // Assignment submission state
   const [submitForm, setSubmitForm] = useState({ assignmentId: '', submissionUrl: '', answerText: '' });
   const [submitStatus, setSubmitStatus] = useState('');
+  const [mySubmissions, setMySubmissions] = useState([]);
+  const [uploadingFileId, setUploadingFileId] = useState(null);
 
   // Toast status
   const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
@@ -206,13 +208,18 @@ const CourseLearn = () => {
       setLiveSessions([]);
     }
 
-    // 5. Course assignments list
+    // 5. Course assignments list & student submissions
     try {
       const assignResp = await api.get(`/assignments/course/${id}`);
       setAssignments(assignResp.data?.data || []);
+      if (user && user.role === 'STUDENT') {
+        const subResp = await api.get(`/assignments/course/${id}/my-submissions`);
+        setMySubmissions(subResp.data?.data || []);
+      }
     } catch (error) {
-      console.error("Error fetching assignments:", error);
+      console.error("Error fetching assignments/submissions:", error);
       setAssignments([]);
+      setMySubmissions([]);
     }
 
     // 6. AI Chat threads
@@ -409,12 +416,61 @@ const CourseLearn = () => {
         setSubmitStatus('Submitted successfully!');
         showToast('success', 'Assignment Submitted successfully!');
         setSubmitForm({ assignmentId: '', submissionUrl: '', answerText: '' });
+        // Reload student submissions
+        const subResp = await api.get(`/assignments/course/${id}/my-submissions`);
+        setMySubmissions(subResp.data?.data || []);
       } else {
         setSubmitStatus('Submission failed.');
       }
     } catch (error) {
       console.error(error);
       setSubmitStatus('Error submitting assignment.');
+    }
+  };
+
+  // Upload Assignment Document
+  const handleAssignmentFileUpload = async (file, assignmentId) => {
+    if (!file) return;
+    setUploadingFileId(assignmentId);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const response = await api.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (response.data.success) {
+        const fileUrl = response.data.data.url;
+        setSubmitForm(prev => ({
+          ...prev,
+          assignmentId: assignmentId.toString(),
+          submissionUrl: fileUrl
+        }));
+        showToast('success', 'File uploaded successfully! URL filled below.');
+      } else {
+        showToast('error', response.data.message || 'File upload failed');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('error', 'Failed to upload file to storage.');
+    } finally {
+      setUploadingFileId(null);
+    }
+  };
+
+  // Unsubmit Assignment
+  const handleUnsubmitAssignment = async (submissionId) => {
+    if (!window.confirm("Are you sure you want to unsubmit this assignment? This will delete your submission and you will need to re-upload.")) return;
+    try {
+      const response = await api.delete(`/assignments/submissions/${submissionId}`);
+      if (response.data.success) {
+        showToast('success', 'Assignment unsubmitted successfully!');
+        // Reload submissions
+        const subResp = await api.get(`/assignments/course/${id}/my-submissions`);
+        setMySubmissions(subResp.data?.data || []);
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('error', error.response?.data?.message || 'Failed to unsubmit assignment.');
     }
   };
 
@@ -1678,33 +1734,70 @@ const CourseLearn = () => {
                 {resources.length === 0 ? (
                   <p className="text-slate-500 text-xs italic">No downloadable resources added for this course.</p>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {resources.map(res => {
-                      const isPdf = (res.fileUrl || '').toLowerCase().endsWith('.pdf') || (res.title || '').toLowerCase().endsWith('.pdf');
+                      const name = res.fileName || res.title || 'Untitled Resource';
+                      const isPdf = (res.fileUrl || '').toLowerCase().endsWith('.pdf') || name.toLowerCase().endsWith('.pdf');
                       const isImg = /\.(jpg|jpeg|png|webp|gif)$/i.test(res.fileUrl || '');
                       const canPreview = isPdf || isImg;
+                      const sizeFormatted = res.fileSize ? (res.fileSize < 1024 * 1024 ? (res.fileSize / 1024).toFixed(1) + ' KB' : (res.fileSize / (1024 * 1024)).toFixed(1) + ' MB') : '';
+
                       return (
-                        <div key={res.id} className="p-3.5 bg-background/40 border border-border rounded-xl flex items-center justify-between">
-                          <div className="min-w-0 pr-3">
-                            <h5 className="text-xs font-bold text-white truncate">{res.title}</h5>
-                            <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">{res.resourceType}</span>
+                        <div key={res.id} className="p-4 bg-surface-800/50 border border-surface-650 hover:border-primary-500/40 hover:bg-surface-800/90 rounded-2xl flex items-center justify-between gap-4 transition-all duration-300 shadow-md group">
+                          {/* File Icon & Info Container */}
+                          <div className="flex items-center space-x-3.5 min-w-0 flex-1">
+                            {/* Premium File Type Badge / Icon */}
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 shadow-inner ${
+                              isPdf ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 
+                              isImg ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 
+                              'bg-primary-500/10 text-primary-400 border border-primary-500/20'
+                            }`}>
+                              {isPdf ? (
+                                <svg className="w-5.5 h-5.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-5.5 h-5.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              )}
+                            </div>
+
+                            {/* Text Details */}
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <h5 className="text-xs font-bold text-white truncate group-hover:text-primary-300 transition-colors" title={name}>
+                                {name}
+                              </h5>
+                              <div className="flex items-center space-x-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                <span>{res.fileType || 'Document'}</span>
+                                {sizeFormatted && (
+                                  <>
+                                    <span className="text-slate-650">•</span>
+                                    <span className="lowercase font-semibold text-slate-500">{sizeFormatted}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-2 shrink-0">
+
+                          {/* Quick Actions */}
+                          <div className="flex items-center gap-2 shrink-0">
                             {canPreview && (
                               <button
                                 onClick={() => setPreviewUrl(res.fileUrl)}
-                                className="bg-primary-600/20 hover:bg-primary-600/40 text-primary-400 border border-primary-500/30 text-[10px] font-bold px-3 py-1.5 rounded-lg transition cursor-pointer"
+                                className="bg-primary-600/10 hover:bg-primary-600 text-primary-400 hover:text-white border border-primary-500/20 hover:border-transparent text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition cursor-pointer select-none active:scale-95 flex items-center space-x-1"
                               >
-                                View 👁️
+                                <span>View 👁️</span>
                               </button>
                             )}
                             <a
                               href={res.fileUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="bg-surface-700 hover:bg-surface-600 text-slate-200 border border-surface-500 text-[10px] font-bold px-3 py-1.5 rounded-lg transition"
+                              download
+                              className="bg-surface-700 hover:bg-white text-slate-200 hover:text-slate-950 border border-surface-600 hover:border-transparent text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition select-none active:scale-95 flex items-center"
                             >
-                              Download 💾
+                              <span>Get 📥</span>
                             </a>
                           </div>
                         </div>
@@ -1718,50 +1811,145 @@ const CourseLearn = () => {
             {/* Tab 4: Assignments */}
             {activeTab === 'assignments' && (
               <div className="space-y-6">
-                <h4 className="text-white font-extrabold text-sm mb-2">Assignments & Homework</h4>
+                <h4 className="text-white font-extrabold text-sm mb-4">Assignments & Homework</h4>
                 {assignments.length === 0 ? (
                   <p className="text-slate-500 text-xs italic">No assignments scheduled for this syllabus.</p>
                 ) : (
                   <div className="grid grid-cols-1 gap-4">
-                    {assignments.map(ass => (
-                      <div key={ass.id} className="p-5 bg-background/40 border border-border rounded-2xl space-y-4">
-                        <div>
-                          <h5 className="text-white font-bold text-sm">{ass.title}</h5>
-                          <p className="text-text-muted text-xs leading-relaxed mt-1">{ass.instructions}</p>
-                          <span className="inline-block mt-2 text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
-                            Due: {new Date(ass.dueDate).toLocaleDateString()}
-                          </span>
-                        </div>
+                    {assignments.map(ass => {
+                      // Find if student has a submission for this assignment
+                      const submission = mySubmissions.find(sub => sub.assignment?.id === ass.id);
+                      const isGraded = submission && submission.grade !== null;
 
-                        <form onSubmit={handleSubmitAssignment} className="border-t border-border pt-4 space-y-3">
-                          <input type="hidden" value={ass.id} />
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <input
-                              type="url"
-                              placeholder="Submission URL (GitHub / Drive)"
-                              required
-                              value={submitForm.assignmentId === ass.id.toString() ? submitForm.submissionUrl : ''}
-                              onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: ass.id.toString(), submissionUrl: e.target.value })}
-                              className="bg-surface-900 border border-surface-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary-600"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Optional note text..."
-                              value={submitForm.assignmentId === ass.id.toString() ? submitForm.answerText : ''}
-                              onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: ass.id.toString(), answerText: e.target.value })}
-                              className="bg-surface-900 border border-surface-600 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-primary-600"
-                            />
+                      return (
+                        <div key={ass.id} className="p-5 bg-surface-800/50 border border-surface-650 rounded-2xl space-y-4 shadow-md transition hover:border-surface-500">
+                          {/* Header Details */}
+                          <div className="flex justify-between items-start gap-4 flex-wrap">
+                            <div className="space-y-1">
+                              <h5 className="text-sm font-bold text-white">{ass.title}</h5>
+                              <p className="text-slate-300 text-xs leading-relaxed max-w-prose">
+                                {ass.description || ass.instructions || "No instructions provided."}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end space-y-2.5 shrink-0">
+                              <span className="text-[9px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-lg font-mono">
+                                Due: {new Date(ass.dueDate).toLocaleDateString()}
+                              </span>
+                              {submission && (
+                                <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg ${
+                                  isGraded ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
+                                  'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                }`}>
+                                  {isGraded ? `Graded: ${submission.grade}/${ass.maxScore}` : 'Pending Grade'}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <button
-                            type="submit"
-                            onClick={() => setSubmitForm(prev => ({ ...prev, assignmentId: ass.id.toString() }))}
-                            className="bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer"
-                          >
-                            Submit Assignment
-                          </button>
-                        </form>
-                      </div>
-                    ))}
+
+                          {/* Submission Details Card (If submitted) */}
+                          {submission ? (
+                            <div className="bg-surface-900/60 border border-surface-700/80 p-4 rounded-xl space-y-3">
+                              <div className="text-[11px] space-y-2">
+                                <p className="flex items-center text-slate-400 font-bold uppercase tracking-wider text-[9px] gap-1">
+                                  <span>Your Submission</span>
+                                  <span className="text-slate-650">•</span>
+                                  <span className="lowercase font-normal text-slate-500">submitted {new Date(submission.submittedAt).toLocaleDateString()}</span>
+                                </p>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-bold text-slate-400">File Link:</span>
+                                  <a 
+                                    href={submission.submissionUrl} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    className="text-primary-400 hover:underline truncate max-w-[280px] font-mono"
+                                    title={submission.submissionUrl}
+                                  >
+                                    {submission.submissionUrl}
+                                  </a>
+                                </div>
+                                {submission.answerText && (
+                                  <p><span className="font-bold text-slate-400">Your Remarks Note:</span> "{submission.answerText}"</p>
+                                )}
+                                {isGraded && submission.feedback && (
+                                  <div className="mt-3 p-3 bg-teal-500/5 border border-teal-500/15 rounded-lg text-teal-400">
+                                    <p className="font-extrabold uppercase text-[9px] tracking-wider mb-1">Teacher Feedback Remarks</p>
+                                    <p className="italic font-medium">"{submission.feedback}"</p>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Unsubmit option (Only if ungraded) */}
+                              {!isGraded && (
+                                <div className="pt-2">
+                                  <button
+                                    onClick={() => handleUnsubmitAssignment(submission.id)}
+                                    className="w-full sm:w-auto bg-red-500/10 hover:bg-red-650 text-red-400 hover:text-white border border-red-500/20 hover:border-transparent text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-xl transition cursor-pointer select-none active:scale-95 flex items-center justify-center space-x-1.5"
+                                  >
+                                    <span>Unsubmit Assignment ✕</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            /* Submit Assignment Form (If not submitted) */
+                            <form onSubmit={handleSubmitAssignment} className="border-t border-surface-700/60 pt-4 space-y-4">
+                              <input type="hidden" value={ass.id} />
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Device File Uploader */}
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">Upload Homework (PDF, DOC, ZIP)</label>
+                                  <div className="flex items-center gap-3">
+                                    <input
+                                      type="file"
+                                      onChange={(e) => handleAssignmentFileUpload(e.target.files[0], ass.id)}
+                                      className="text-xs text-slate-400 file:bg-surface-700 file:border-none file:text-white file:px-3 file:py-2 file:rounded-lg file:cursor-pointer hover:file:bg-surface-600 transition"
+                                      disabled={uploadingFileId === ass.id}
+                                    />
+                                    {uploadingFileId === ass.id && (
+                                      <span className="text-[10px] text-primary-400 font-bold animate-pulse">Uploading to Azure Storage...</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Submission URL field */}
+                                <div className="space-y-1">
+                                  <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">Or Paste Submission URL</label>
+                                  <input
+                                    type="url"
+                                    placeholder="Submission URL (GitHub, Drive, or uploaded link)"
+                                    required
+                                    value={submitForm.assignmentId === ass.id.toString() ? submitForm.submissionUrl : ''}
+                                    onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: ass.id.toString(), submissionUrl: e.target.value })}
+                                    className="w-full bg-surface-900 border border-surface-600 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-primary-600 font-mono"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Student Note */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider block">Notes / Remarks for Teacher</label>
+                                <input
+                                  type="text"
+                                  placeholder="Provide optional details about your work here..."
+                                  value={submitForm.assignmentId === ass.id.toString() ? submitForm.answerText : ''}
+                                  onChange={(e) => setSubmitForm({ ...submitForm, assignmentId: ass.id.toString(), answerText: e.target.value })}
+                                  className="w-full bg-surface-900 border border-surface-600 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-primary-600"
+                                />
+                              </div>
+
+                              <button
+                                type="submit"
+                                onClick={() => setSubmitForm(prev => ({ ...prev, assignmentId: ass.id.toString() }))}
+                                className="w-full sm:w-auto bg-primary-600 hover:bg-white text-white hover:text-slate-950 border border-primary-500/20 hover:border-transparent text-[10px] font-black uppercase tracking-wider px-5 py-2.5 rounded-xl transition select-none active:scale-95 cursor-pointer"
+                              >
+                                Submit Assignment
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      );
+                    })}
                     {submitStatus && (
                       <p className="text-xs text-teal-400 font-semibold">{submitStatus}</p>
                     )}
