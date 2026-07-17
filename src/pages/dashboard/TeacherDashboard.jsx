@@ -54,6 +54,7 @@ const TeacherDashboard = () => {
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [sections, setSections] = useState([]);
   const [newSectionTitle, setNewSectionTitle] = useState('');
+  const [editingResource, setEditingResource] = useState(null);
 
   // Lessons
   const [selectedSectionId, setSelectedSectionId] = useState(null);
@@ -97,6 +98,7 @@ const TeacherDashboard = () => {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(null);
   const [assignmentForm, setAssignmentForm] = useState({
     title: '',
     description: '',
@@ -108,7 +110,7 @@ const TeacherDashboard = () => {
     grade: '',
     feedback: ''
   });
-
+ 
   const fetchCourseAssignments = async (courseId) => {
     try {
       const response = await api.get(`/assignments/course/${courseId}`);
@@ -118,27 +120,81 @@ const TeacherDashboard = () => {
       setCourseAssignments([]);
     }
   };
-
+ 
   const handleCreateAssignment = async (e) => {
     e.preventDefault();
     if (!assignmentForm.title.trim() || !assignmentForm.description.trim() || !assignmentForm.dueDate) return;
-
+ 
     try {
-      const response = await api.post('/assignments/create', {
-        courseId: selectedCourse.id,
-        title: assignmentForm.title,
-        description: assignmentForm.description,
-        dueDate: assignmentForm.dueDate + ":00",
-        maxScore: parseInt(assignmentForm.maxScore || 100)
-      });
-      if (response.data.success) {
-        showNotification('success', 'Assignment scheduled successfully!');
-        fetchCourseAssignments(selectedCourse.id);
-        setAssignmentForm({ title: '', description: '', dueDate: '', maxScore: 100 });
+      if (editingAssignment) {
+        // Edit Mode
+        const response = await api.put(`/assignments/${editingAssignment.id}`, {
+          title: assignmentForm.title,
+          description: assignmentForm.description,
+          dueDate: assignmentForm.dueDate.length === 16 ? assignmentForm.dueDate + ":00" : assignmentForm.dueDate,
+          maxScore: parseInt(assignmentForm.maxScore || 100)
+        });
+        if (response.data.success) {
+          showNotification('success', 'Assignment updated successfully!');
+          setEditingAssignment(null);
+          setAssignmentForm({ title: '', description: '', dueDate: '', maxScore: 100 });
+          fetchCourseAssignments(selectedCourse.id);
+        }
+      } else {
+        // Add Mode
+        const response = await api.post('/assignments/create', {
+          courseId: selectedCourse.id,
+          title: assignmentForm.title,
+          description: assignmentForm.description,
+          dueDate: assignmentForm.dueDate + ":00",
+          maxScore: parseInt(assignmentForm.maxScore || 100)
+        });
+        if (response.data.success) {
+          showNotification('success', 'Assignment scheduled successfully!');
+          fetchCourseAssignments(selectedCourse.id);
+          setAssignmentForm({ title: '', description: '', dueDate: '', maxScore: 100 });
+        }
       }
     } catch (error) {
       console.error(error);
-      showNotification('error', 'Failed to schedule assignment.');
+      showNotification('error', editingAssignment ? 'Failed to update assignment.' : 'Failed to schedule assignment.');
+    }
+  };
+
+  const handleStartEditAssignment = (ass) => {
+    setEditingAssignment(ass);
+    let formattedDate = '';
+    if (ass.dueDate) {
+      formattedDate = ass.dueDate.substring(0, 16);
+    }
+    setAssignmentForm({
+      title: ass.title || '',
+      description: ass.description || '',
+      dueDate: formattedDate,
+      maxScore: ass.maxScore || 100
+    });
+  };
+
+  const handleCancelEditAssignment = () => {
+    setEditingAssignment(null);
+    setAssignmentForm({ title: '', description: '', dueDate: '', maxScore: 100 });
+  };
+
+  const handleDeleteAssignment = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this assignment? This will also delete all student submissions!")) return;
+    try {
+      const response = await api.delete(`/assignments/${id}`);
+      if (response.data.success) {
+        showNotification('success', 'Assignment deleted successfully!');
+        fetchCourseAssignments(selectedCourse.id);
+        if (selectedAssignmentId === id) {
+          setSelectedAssignmentId(null);
+          setSubmissions([]);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      showNotification('error', 'Failed to delete assignment.');
     }
   };
 
@@ -299,17 +355,27 @@ const TeacherDashboard = () => {
     setNewSectionTitle('');
     setSelectedAssignmentId(null);
     setSubmissions([]);
+    
+    // 1. Fetch Sections
     try {
       const response = await api.get(`/courses/${course.id}/sections`);
       setSections(response.data?.data || []);
+    } catch (error) {
+      console.error("Error fetching sections:", error);
+      setSections([]);
+    }
+
+    // 2. Fetch Resources
+    try {
       const resResponse = await api.get(`/courses/${course.id}/resources`);
       setResources(resResponse.data?.data || []);
-      fetchCourseAssignments(course.id);
     } catch (error) {
-      console.error("Error fetching sections/resources:", error);
-      setSections([]);
+      console.error("Error fetching resources:", error);
       setResources([]);
     }
+
+    // 3. Fetch Assignments
+    fetchCourseAssignments(course.id);
   };
 
   const handleAddSection = async (e) => {
@@ -438,33 +504,65 @@ const TeacherDashboard = () => {
     }
   };
 
-  // Resource creation
+  // Resource creation & update
   const handleResourceSubmit = async (e) => {
     e.preventDefault();
     if (!resourceForm.fileName.trim() || !resourceForm.fileUrl.trim()) return;
 
     try {
-      const response = await api.post(`/courses/${selectedCourse.id}/resources`, {
-        fileName: resourceForm.fileName,
-        fileType: 'PDF',
-        fileUrl: resourceForm.fileUrl,
-        fileSize: 1024
-      });
-      if (response.data.success) {
-        selectCourseForSyllabus(selectedCourse);
-        setResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
-        showNotification('success', 'Resource file registered successfully!');
+      if (editingResource) {
+        // Edit Mode
+        const response = await api.put(`/resources/${editingResource.id}`, {
+          fileName: resourceForm.fileName,
+          fileType: resourceForm.fileType || 'PDF',
+          fileUrl: resourceForm.fileUrl,
+          fileSize: resourceForm.fileSize || 1024
+        });
+        if (response.data.success) {
+          selectCourseForSyllabus(selectedCourse);
+          setEditingResource(null);
+          setResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
+          showNotification('success', 'Resource file updated successfully!');
+        }
+      } else {
+        // Add Mode
+        const response = await api.post(`/courses/${selectedCourse.id}/resources`, {
+          fileName: resourceForm.fileName,
+          fileType: 'PDF',
+          fileUrl: resourceForm.fileUrl,
+          fileSize: 1024
+        });
+        if (response.data.success) {
+          selectCourseForSyllabus(selectedCourse);
+          setResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
+          showNotification('success', 'Resource file registered successfully!');
+        }
       }
     } catch (error) {
       console.error(error);
-      showNotification('error', 'Failed to register resource.');
+      showNotification('error', editingResource ? 'Failed to update resource.' : 'Failed to register resource.');
     }
+  };
+
+  const handleStartEditResource = (resource) => {
+    setEditingResource(resource);
+    setResourceForm({
+      fileName: resource.fileName || '',
+      fileType: resource.fileType || 'PDF',
+      fileUrl: resource.fileUrl || '',
+      fileSize: resource.fileSize || 1024
+    });
+  };
+
+  const handleCancelEditResource = () => {
+    setEditingResource(null);
+    setResourceForm({ fileName: '', fileType: 'PDF', fileUrl: '', fileSize: 1024 });
   };
 
   const handleDeleteResource = async (resId) => {
     if (!window.confirm("Delete this resource file?")) return;
     try {
-      const response = await api.delete(`/courses/resources/${resId}`);
+      const response = await api.delete(`/resources/${resId}`);
       if (response.data.success) {
         selectCourseForSyllabus(selectedCourse);
         showNotification('success', 'Resource deleted.');
@@ -815,19 +913,27 @@ const TeacherDashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {resources.map(res => (
-                    <div key={res.id} className="bg-background/45 border border-border p-4 rounded-xl flex justify-between items-center">
-                      <div className="min-w-0">
-                        <span className="text-white font-bold text-xs block truncate">{res.title || res.fileName}</span>
-                        <a href={res.fileUrl} target="_blank" rel="noreferrer" className="text-[9px] text-slate-500 hover:underline truncate block">
+                    <div key={res.id} className="bg-background/45 border border-border p-4 rounded-xl flex justify-between items-center transition hover:border-slate-700">
+                      <div className="min-w-0 flex-1 pr-2">
+                        <span className="text-white font-bold text-xs block truncate">{res.fileName || res.title}</span>
+                        <a href={res.fileUrl} target="_blank" rel="noreferrer" className="text-[9px] text-slate-500 hover:underline truncate block font-mono">
                           {res.fileUrl}
                         </a>
                       </div>
-                      <button
-                        onClick={() => handleDeleteResource(res.id)}
-                        className="text-[10px] font-bold text-slate-500 hover:text-error shrink-0 ml-2"
-                      >
-                        Delete
-                      </button>
+                      <div className="flex items-center space-x-2 shrink-0 ml-2">
+                        <button
+                          onClick={() => handleStartEditResource(res)}
+                          className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-white transition cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteResource(res.id)}
+                          className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-error transition cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -835,7 +941,9 @@ const TeacherDashboard = () => {
             </div>
 
             <div className="bg-background/45 border border-border p-5 rounded-2xl space-y-4">
-              <h4 className="text-white font-bold text-xs">Add Downloadable PDF Materials</h4>
+              <h4 className="text-white font-bold text-xs">
+                {editingResource ? 'Update Study Material' : 'Add Downloadable PDF Materials'}
+              </h4>
               <form onSubmit={handleResourceSubmit} className="flex flex-col md:flex-row gap-4 items-end">
                 <div className="flex-1 w-full space-y-1">
                   <input
@@ -868,9 +976,20 @@ const TeacherDashboard = () => {
                   />
                 </div>
 
-                <button type="submit" className="w-full md:w-auto bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-2.5 rounded-xl transition cursor-pointer select-none">
-                  Add Resource
-                </button>
+                <div className="w-full md:w-auto flex gap-2 shrink-0">
+                  <button type="submit" className="flex-1 md:flex-initial bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-2.5 rounded-xl transition cursor-pointer select-none">
+                    {editingResource ? 'Update' : 'Add Resource'}
+                  </button>
+                  {editingResource && (
+                    <button
+                      type="button"
+                      onClick={handleCancelEditResource}
+                      className="bg-surface-700 hover:bg-surface-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition cursor-pointer select-none"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
 
@@ -883,22 +1002,39 @@ const TeacherDashboard = () => {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {courseAssignments.map(ass => (
-                      <div key={ass.id} className="bg-background/45 border border-border p-4 rounded-xl space-y-3">
-                        <div className="flex justify-between items-start min-w-0">
-                          <div>
-                            <span className="text-white font-bold text-xs block">{ass.title}</span>
-                            <span className="text-[9px] text-slate-400 block mt-0.5 font-medium">
-                              Due: {new Date(ass.dueDate).toLocaleDateString()} | Max Score: {ass.maxScore}
-                            </span>
+                      <div key={ass.id} className="bg-background/45 border border-border p-4 rounded-xl space-y-3 flex flex-col justify-between">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0">
+                              <span className="text-white font-bold text-xs block truncate">{ass.title}</span>
+                              <span className="text-[9px] text-slate-400 block mt-0.5 font-medium">
+                                Due: {new Date(ass.dueDate).toLocaleDateString()} | Max Score: {ass.maxScore}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleFetchSubmissions(ass.id)}
+                              className="bg-primary/20 hover:bg-primary/35 text-primary-400 border border-primary-500/20 text-[9px] font-black uppercase px-2.5 py-1 rounded transition cursor-pointer select-none shrink-0"
+                            >
+                              Submissions
+                            </button>
                           </div>
+                          <p className="text-[10px] text-slate-400 leading-normal line-clamp-2">{ass.description || ass.instructions}</p>
+                        </div>
+                        
+                        <div className="flex justify-end items-center space-x-3 pt-2 border-t border-border/40">
                           <button
-                            onClick={() => handleFetchSubmissions(ass.id)}
-                            className="bg-primary/20 hover:bg-primary/35 text-primary-400 border border-primary-500/20 text-[9px] font-black uppercase px-2.5 py-1 rounded transition cursor-pointer select-none"
+                            onClick={() => handleStartEditAssignment(ass)}
+                            className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-white transition cursor-pointer select-none"
                           >
-                            View Submissions
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteAssignment(ass.id)}
+                            className="text-[9px] font-black uppercase tracking-wider text-slate-500 hover:text-error transition cursor-pointer select-none"
+                          >
+                            Delete
                           </button>
                         </div>
-                        <p className="text-[10px] text-slate-405 leading-normal line-clamp-2">{ass.description || ass.instructions}</p>
                       </div>
                     ))}
                   </div>
@@ -938,9 +1074,16 @@ const TeacherDashboard = () => {
 
                           <div className="text-[10px] text-slate-300 space-y-1">
                             {sub.submissionUrl && (
-                              <p>
-                                <span className="font-semibold text-slate-500">Link: </span>
-                                <a href={sub.submissionUrl} target="_blank" rel="noreferrer" className="text-primary-400 hover:underline font-mono truncate max-w-[250px] inline-block align-bottom">{sub.submissionUrl}</a>
+                              <p className="flex items-center flex-wrap gap-1.5 py-1">
+                                <span className="font-semibold text-slate-500">Attachment: </span>
+                                <a 
+                                  href={sub.submissionUrl} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="bg-primary/10 hover:bg-primary/20 text-primary-400 hover:text-primary-300 border border-primary-500/20 px-2.5 py-1 rounded-lg text-[9px] font-bold inline-flex items-center gap-1 transition"
+                                >
+                                  View Submitted Work 📄
+                                </a>
                               </p>
                             )}
                             {sub.answerText && (
@@ -990,7 +1133,9 @@ const TeacherDashboard = () => {
 
               {/* Schedule/Create Assignment Form */}
               <div className="bg-background/45 border border-border p-5 rounded-2xl space-y-4">
-                <h4 className="text-white font-bold text-xs">Schedule New Assignment / Homework</h4>
+                <h4 className="text-white font-bold text-xs">
+                  {editingAssignment ? 'Update Assignment / Homework' : 'Schedule New Assignment / Homework'}
+                </h4>
                 <form onSubmit={handleCreateAssignment} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1 md:col-span-2">
@@ -1043,12 +1188,23 @@ const TeacherDashboard = () => {
                       />
                     </div>
 
-                    <button
-                      type="submit"
-                      className="w-full md:w-auto bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-2.5 rounded-xl transition cursor-pointer select-none"
-                    >
-                      Schedule Assignment
-                    </button>
+                    <div className="w-full md:w-auto flex gap-2 shrink-0">
+                      <button
+                        type="submit"
+                        className="flex-1 md:flex-initial bg-primary hover:bg-primary-light text-white text-xs font-bold px-6 py-2.5 rounded-xl transition cursor-pointer select-none"
+                      >
+                        {editingAssignment ? 'Update Assignment' : 'Schedule Assignment'}
+                      </button>
+                      {editingAssignment && (
+                        <button
+                          type="button"
+                          onClick={handleCancelEditAssignment}
+                          className="bg-surface-700 hover:bg-surface-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition cursor-pointer select-none"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </form>
               </div>
